@@ -29,7 +29,7 @@ const ui={
   staminaFill:document.getElementById('staminaFill'),staminaText:document.getElementById('staminaText'),rageText:document.getElementById('rageText'),
   currentSkill:document.getElementById('currentSkillText'),
   statLine:document.getElementById('statLine'),buffList:document.getElementById('buffList'),comboPanel:document.getElementById('comboPanel'),comboResult:document.getElementById('comboResult'),comboName:document.getElementById('comboName'),comboSteps:document.getElementById('comboSteps'),comboHint:document.getElementById('comboHint'),
-  comboSelect:document.getElementById('comboSelect'),baseHP:document.getElementById('baseHP'),baseAP:document.getElementById('baseAP'),baseDR:document.getElementById('baseDR'),worldLabels:document.getElementById('worldLabels')
+  comboSelect:document.getElementById('comboSelect'),baseHP:document.getElementById('baseHP'),baseAP:document.getElementById('baseAP'),baseDR:document.getElementById('baseDR'),worldLabels:document.getElementById('worldLabels'),inputFlash:document.getElementById('inputFlash')
 };
 
 let selectedMode='duel';
@@ -47,9 +47,9 @@ const SKILL_NAME={
   lava:'溶岩貫通',shake:'振り払い',grab:'チョップ＆スロー',predatory:'プレデターハンティング',falling:'フォーリングボルダー',
   beastly:'残酷な風斬',frenzy:'バーサークデストロイヤー',thunder:'ブラストライトニング',rage:'止められない野獣',
   blastBash:'ブラストバッシュ',blastRage:'ブラストレイジ',bestialDestroyer:'ベスティアルデストロイヤー',bestialRage:'ベスティアルレイス',
-  berserkerStorm:'バーサーカーストーム',berserkerLord:'バーサーカーロード'
+  berserkerStorm:'バーサーカーストーム',berserkerLord:'バーサーカーロード',predatoryLoop:'プレデターハンティング（連続ジャンプ）'
 };
-const combo={mode:'free',name:'Free Practice',steps:[],index:0,result:'WAIT',lastAt:0,window:3.0,history:[]};
+const combo={mode:'free',name:'自由練習',steps:[],index:0,result:'WAIT',lastAt:0,window:3.0,history:[],predatoryCount:0};
 
 const clock=new THREE.Clock();
 
@@ -163,8 +163,8 @@ function spawnScenario(){
     const marker=new THREE.Mesh(new THREE.CylinderGeometry(3.6,3.6,.08,48),new THREE.MeshStandardMaterial({color:0x4b4c4e,emissive:0x111111}));marker.name='laMarker';marker.position.set(0,.04,6);world.add(marker);
   }
   bots.forEach(b=>{b.target=player;createActorLabel(b)});allies.forEach(a=>{a.target=nearestEnemy(a);createActorLabel(a)});
-  ui.modeLabel.textContent=state.mode==='duel'?'1v1':state.mode==='many'?'1v'+bots.length:'LA Scenario';
-  ui.aiLabel.textContent='AI: '+state.difficulty;ui.event.textContent='伝承GA訓練開始';started=true;
+  ui.modeLabel.textContent=state.mode==='duel'?'1対1':state.mode==='many'?'1対'+bots.length:'ラストアタック';
+  ui.aiLabel.textContent='AI：'+(state.difficulty==='Easy'?'簡単':state.difficulty==='Hard'?'上級':'標準');ui.event.textContent='伝承GA訓練開始';started=true;
 }
 
 function face(a,pos,speed=9,dt=.016){
@@ -219,40 +219,76 @@ function readEnhancements(){
   state.enh57=document.querySelector('input[name="enh57"]:checked')?.value||'bestialDestroyer';
   state.enh58=document.querySelector('input[name="enh58"]:checked')?.value||'berserkerStorm';
 }
+function flashInput(id,success=true,extra=''){
+  if(!ui.inputFlash)return;
+  const name=SKILL_NAME[id]||id;
+  ui.inputFlash.textContent=(success?'✓ ':'✕ ')+name+(extra?' '+extra:'');
+  ui.inputFlash.classList.remove('show-ok','show-bad');
+  void ui.inputFlash.offsetWidth;
+  ui.inputFlash.classList.add(success?'show-ok':'show-bad');
+  const node=[...ui.comboSteps.querySelectorAll('.comboStep')].find(x=>x.dataset.id===id || (id==='predatory'&&x.dataset.id==='predatoryLoop'));
+  if(node){node.classList.remove('flash-ok','flash-bad');void node.offsetWidth;node.classList.add(success?'flash-ok':'flash-bad');}
+}
 function buildCombo(){
-  combo.mode=ui.comboSelect?.value||'free';combo.index=0;combo.result='WAIT';combo.lastAt=0;combo.history=[];
-  if(combo.mode==='catch'){combo.name='接近→横移動→再接近→キャッチ→追撃';combo.steps=['lava','shake','lava','grab','frenzy'];}
-  else if(combo.mode==='predator'){combo.name='Predatory x3 → Falling Boulder';combo.steps=['predatory','predatory','predatory','falling'];}
-  else if(combo.mode==='enhance'){combo.name='練成3段ルート';combo.steps=[state.enh56,state.enh57,state.enh58];}
-  else{combo.name='Free Practice';combo.steps=[];}
+  combo.mode=ui.comboSelect?.value||'free';combo.index=0;combo.result='WAIT';combo.lastAt=0;combo.history=[];combo.predatoryCount=0;
+  if(combo.mode==='catch'){combo.name='接近 → 横移動 → 再接近 → キャッチ → 追撃';combo.steps=['lava','shake','lava','grab','frenzy'];}
+  else if(combo.mode==='predator'){combo.name='プレデターハンティング連続 → フォーリングボルダー';combo.steps=['predatoryLoop','falling'];}
+  else if(combo.mode==='enhance'){combo.name='スキル練成3段ルート';combo.steps=[state.enh56,state.enh57,state.enh58];}
+  else{combo.name='自由練習';combo.steps=[];}
+  if(ui.comboHint)ui.comboHint.textContent=combo.mode==='free'?'好きな技を自由に練習':'次の入力を黄色で表示';
   renderCombo();
 }
+function recordPredatoryHop(){
+  flashInput('predatory',true,'×'+(combo.predatoryCount+1));
+  if(combo.mode!=='predator'||combo.result!=='WAIT'||combo.index!==0)return;
+  combo.predatoryCount++;combo.lastAt=performance.now()/1000;
+  if(ui.comboHint)ui.comboHint.textContent='S+F長押し継続中：'+combo.predatoryCount+'回';
+  renderCombo();
+}
+function finishPredatoryChain(){
+  if(combo.mode!=='predator'||combo.result!=='WAIT'||combo.index!==0)return;
+  if(combo.predatoryCount>=3){
+    combo.index=1;combo.lastAt=performance.now()/1000;
+    if(ui.comboHint)ui.comboHint.textContent='次：左クリックでフォーリングボルダー';
+    renderCombo();
+  }else{
+    combo.result='FAILED';if(ui.comboHint)ui.comboHint.textContent='連続ジャンプが足りません（3回以上）';flashInput('predatory',false,'×'+combo.predatoryCount);renderCombo();
+  }
+}
 function recordCombo(id,success=true){
+  flashInput(id,success);
   if(combo.mode==='free')return;
+  if(combo.mode==='predator'&&id==='predatory')return;
   const now=performance.now()/1000;
   if(combo.result==='SUCCESS'||combo.result==='FAILED')return;
   const expected=combo.steps[combo.index];
-  if(!success){combo.result='FAILED';combo.history.push({id,state:'fail'});ui.comboHint.textContent=SKILL_NAME[id]+' が失敗';renderCombo();return;}
+  if(!success){combo.result='FAILED';combo.history.push({id,state:'fail'});ui.comboHint.textContent=(SKILL_NAME[id]||id)+' が失敗';renderCombo();return;}
   if(expected===id){
     combo.history.push({id,state:'done'});combo.index++;combo.lastAt=now;
-    if(combo.index>=combo.steps.length){combo.result='SUCCESS';ui.comboHint.textContent='COMBO COMPLETE';}
-    else ui.comboHint.textContent='NEXT: '+SKILL_NAME[combo.steps[combo.index]];
+    if(combo.index>=combo.steps.length){combo.result='SUCCESS';ui.comboHint.textContent='コンボ成功！';}
+    else ui.comboHint.textContent='次：'+SKILL_NAME[combo.steps[combo.index]];
   }else{
-    combo.result='FAILED';combo.history.push({id,state:'fail'});ui.comboHint.textContent='順番違い: '+SKILL_NAME[id]+' / expected '+SKILL_NAME[expected];
+    combo.result='FAILED';combo.history.push({id,state:'fail'});ui.comboHint.textContent='順番違い：'+(SKILL_NAME[id]||id)+' ／ 正解：'+(SKILL_NAME[expected]||expected);
   }
   renderCombo();
 }
 function comboTick(){
   if(combo.mode==='free'||combo.result!=='WAIT'||combo.index===0)return;
   const now=performance.now()/1000;
-  if(now-combo.lastAt>combo.window){combo.result='FAILED';ui.comboHint.textContent='TIME OUT';renderCombo();}
+  if(now-combo.lastAt>combo.window){combo.result='FAILED';ui.comboHint.textContent='入力が遅すぎます';renderCombo();}
 }
 function renderCombo(){
   if(!ui.comboPanel)return;
-  ui.comboName.textContent=combo.name;ui.comboResult.textContent=combo.result;
+  ui.comboName.textContent=combo.name;
+  ui.comboResult.textContent=combo.result==='SUCCESS'?'成功':combo.result==='FAILED'?'失敗':combo.mode==='free'?'自由練習':'待機';
   ui.comboPanel.classList.toggle('success',combo.result==='SUCCESS');ui.comboPanel.classList.toggle('failed',combo.result==='FAILED');
   ui.comboSteps.innerHTML='';
-  combo.steps.forEach((id,i)=>{const s=document.createElement('span');s.className='comboStep '+(i<combo.index?'done':i===combo.index&&combo.result==='WAIT'?'current':combo.result==='FAILED'&&i===combo.index?'fail':'');s.textContent=(i+1)+'. '+SKILL_NAME[id];ui.comboSteps.appendChild(s);});
+  combo.steps.forEach((id,i)=>{
+    const s=document.createElement('span');s.dataset.id=id;
+    s.className='comboStep '+(i<combo.index?'done':i===combo.index&&combo.result==='WAIT'?'current':combo.result==='FAILED'&&i===combo.index?'fail':'');
+    const label=id==='predatoryLoop'?'S+F 長押し：'+SKILL_NAME[id]+' '+(combo.predatoryCount?('×'+combo.predatoryCount):''):SKILL_NAME[id];
+    s.textContent=(i+1)+'. '+label;ui.comboSteps.appendChild(s);
+  });
 }
 function applyEffect(a,id,label,duration,mods={},kind='good'){
   a.effects[id]={id,label,time:duration,duration,mods,kind};
@@ -270,10 +306,14 @@ function setStatus(a,type,duration){
   if(type==='FLOAT'||type==='STIFFNESS'||type==='STUN'||type==='GRABBED')a.cc=Math.max(a.cc,duration||.8);
 }
 function statusClass(a){return String(a.status||'NORMAL').toLowerCase();}
+function statusLabel(a){
+  const map={NORMAL:'通常',DOWN:'ダウン',BOUND:'バウンド',FLOAT:'浮かし',GRABBED:'キャッチ中',STIFFNESS:'硬直',STUN:'気絶'};
+  return map[a.status]||a.status||'通常';
+}
 function createActorLabel(a){
   if(a.isPlayer||!ui.worldLabels)return;
   const el=document.createElement('div');el.className='actorLabel';
-  el.innerHTML='<div class="actorName"></div><div class="actorHp"><i></i></div><span class="actorState normal">NORMAL</span>';
+  el.innerHTML='<div class="actorName"></div><div class="actorHp"><i></i></div><span class="actorState normal">通常</span>';
   ui.worldLabels.appendChild(el);a.statusEl=el;
 }
 function updateActorLabels(){
@@ -286,7 +326,7 @@ function updateActorLabels(){
     el.style.display='block';el.style.left=((p.x*.5+.5)*innerWidth)+'px';el.style.top=((-p.y*.5+.5)*innerHeight)+'px';
     el.querySelector('.actorName').textContent=a.name;
     el.querySelector('.actorHp i').style.width=(Math.max(0,a.hp/a.maxHp)*100)+'%';
-    const st=el.querySelector('.actorState');st.textContent=a.status||'NORMAL';st.className='actorState '+statusClass(a);
+    const st=el.querySelector('.actorState');st.textContent=statusLabel(a);st.className='actorState '+statusClass(a);
   }
 }
 function buffTick(a,dt){
@@ -325,8 +365,8 @@ function slashFx(pos,rot,color=0xa9d6ff){
 function damage(attacker,target,amount,opts={}){
   if(!target||!target.alive)return false;
   if(attacker===player)metrics.attempts++;
-  if(target.invuln>0){if(attacker===player)ui.event.textContent='MISS — iframe';else metrics.defenses++;return false;}
-  if(target.fg&&isInFront(target,attacker)&&!opts.grab){if(attacker===player)ui.event.textContent='BLOCK — Forward Guard';else metrics.defenses++;return false;}
+  if(target.invuln>0){if(attacker===player)ui.event.textContent='回避されました — 無敵';else metrics.defenses++;return false;}
+  if(target.fg&&isInFront(target,attacker)&&!opts.grab){if(attacker===player)ui.event.textContent='防がれました — 前方ガード';else metrics.defenses++;return false;}
   const ap=attacker.stats?.AP||300,dr=target.stats?.DR||350;
   const scaled=amount*clamp(ap/300,.55,2.6)*(1-clamp(dr/2200,0,.48));
   target.hp-=scaled;if(attacker===player)metrics.hits++;
@@ -355,7 +395,7 @@ function aoeHit(radius,amount,opts={}){
 
 function kill(target,attacker){
   target.alive=false;target.group.visible=false;target.hp=0;target.grabbedBy=null;target.respawn=target===player?1.25:1.8;
-  if(target===player){metrics.deaths++;ui.event.textContent='DOWN — 再開まで少し待って';}else if(attacker===player)ui.event.textContent=target.name+' defeated';
+  if(target===player){metrics.deaths++;ui.event.textContent='ダウン — 復帰まで少し待って';}else if(attacker===player)ui.event.textContent=target.name+' を撃破';
 }
 
 function respawnActor(a){
@@ -365,10 +405,10 @@ function respawnActor(a){
 }
 
 function skillReady(n){return player&&player.cds[n]<=0;}
-function spendStamina(v){if(player.stamina<v){ui.event.textContent='STAMINA不足';return false;}player.stamina-=v;return true;}
+function spendStamina(v){if(player.stamina<v){ui.event.textContent='持久力が足りません';flashInput('持久力',false);return false;}player.stamina-=v;return true;}
 function setSkill(name,duration,extra={}){
   player.skill=Object.assign({name,t:0,duration,events:{}},extra);player.lastSkill=name;
-  if(ui.currentSkill)ui.currentSkill.textContent=name;
+  if(ui.currentSkill){const n={Lava Piercer:'溶岩貫通',Shake Off:'振り払い',Smack Down:'チョップ＆スロー','Predatory Hunt':'プレデターハンティング','Beastly Wind Slash':'残酷な風斬','Frenzied Destroyer':'バーサークデストロイヤー','Raging Thunder':'ブラストライトニング','Unstoppable Beast':'止められない野獣','Falling Boulder':'フォーリングボルダー','Blast Bash':'ブラストバッシュ','Blast Rage':'ブラストレイジ','Bestial Destroyer':'ベスティアルデストロイヤー','Bestial Rage':'ベスティアルレイス','Berserker Storm':'バーサーカーストーム','Berserker Lord':'バーサーカーロード','Axe Strike':'通常斧攻撃'};ui.currentSkill.textContent=n[name]||name;}
 }
 function setCd(n,v){player.cds[n]=v;}
 
@@ -376,47 +416,47 @@ function useLava(){
   if(!skillReady('lava')||!spendStamina(150)||player.skill)return;recordCombo('lava',true);
   setCd('lava',8);player.sa=.78;player.lavaChain=1.25;player.attackCd=.7;
   setSkill('Lava Piercer',.72,{dir:forwardVec(),start:player.group.position.clone(),distance:8.5});
-  ui.event.textContent='Lava Piercer — SA突進';
+  ui.event.textContent='溶岩貫通 — スーパーアーマー突進';
 }
 function useShake(){
   if(!skillReady('shake')||!spendStamina(200)||player.skill)return;recordCombo('shake',true);
   setCd('shake',3);player.invuln=.22;player.cds.lava=0;player.lavaChain=1.0;
   const side=key.KeyA?-1:1;
   setSkill('Shake Off',.3,{dir:rightVec().multiplyScalar(side),start:player.group.position.clone(),distance:3.15,side});
-  ui.event.textContent='Shake Off — 横回避 / Lava Piercer reset';
+  ui.event.textContent='振り払い — 横回避 / 溶岩貫通の再使用待機を初期化';
 }
 function useGrab(){
   if(!skillReady('grab')||player.skill)return;
   setCd('grab',15);player.sa=.62;player.attackCd=1.55;
   setSkill('Smack Down',1.62,{victim:null,grabChecked:false,slammed:false});
-  ui.event.textContent='Smack Down — 掴みにいく';
+  ui.event.textContent='チョップ＆スロー — キャッチ開始';
 }
 function usePredatory(){
   if(!skillReady('predatory')||!spendStamina(250)||player.skill)return;
   setCd('predatory',13);player.sa=2.4;player.rage=Math.max(player.rage,20);player.healTick=5;
   setSkill('Predatory Hunt',.58,{hop:1,start:player.group.position.clone(),dir:forwardVec(),distance:3.7,height:3.2,landed:false});
-  ui.event.textContent='Predatory Hunt — S+Fを押し続けると連続ジャンプ';
+  ui.event.textContent='プレデターハンティング — S+F長押しで連続ジャンプ';
 }
 function useBeastly(){
   if(!skillReady('beastly')||player.skill)return;recordCombo('beastly',true);
   setCd('beastly',6);const protectedChain=player.lavaChain>0;if(protectedChain)player.fg=true;applyEffect(player,'beastlyAS','攻撃速度 +20%',10,{AS:20});
   setSkill('Beastly Wind Slash',.78,{protectedChain,hit1:false,hit2:false});
-  ui.event.textContent=protectedChain?'Beastly Wind Slash — Lava連携FG':'Beastly Wind Slash';
+  ui.event.textContent=protectedChain?'残酷な風斬 — 溶岩貫通連携・前方ガード':'残酷な風斬';
 }
 function useFrenzy(){
   if(!skillReady('frenzy')||player.skill)return;recordCombo('frenzy',true);
   setCd('frenzy',6);setSkill('Frenzied Destroyer',.82,{hit:false});
-  ui.event.textContent='Frenzied Destroyer — 斧叩きつけ';
+  ui.event.textContent='バーサークデストロイヤー — 斧叩きつけ';
 }
 function useThunder(){
   if(!skillReady('thunder')||player.skill)return;recordCombo('thunder',true);
   setCd('thunder',14);player.sa=1.7;setSkill('Raging Thunder',1.62,{nextHit:.16,hits:0});
-  ui.event.textContent='Raging Thunder — SA回転';
+  ui.event.textContent='ブラストライトニング — スーパーアーマー回転';
 }
 function useRage(){
   if(!skillReady('rage')||player.skill)return;
   setCd('rage',45);player.sa=.95;player.rage=20;player.healTick=5;player.hp=Math.min(player.maxHp,player.hp+18);
-  setSkill('Unstoppable Beast',.88,{roared:false});ui.event.textContent='Unstoppable Beast — Bestial Rage';
+  setSkill('Unstoppable Beast',.88,{roared:false});ui.event.textContent='止められない野獣 — 野獣状態';
 }
 
 function useFallingBoulder(){
@@ -482,7 +522,7 @@ function updateSkill(dt){
     if(!s.grabChecked&&p>=.18){
       s.grabChecked=true;const t=nearestEnemy(player);
       if(t&&player.group.position.distanceTo(t.group.position)<=2.35&&t.invuln<=0){
-        s.victim=t;t.grabbedBy=player;t.cc=2.4;metrics.grabs++;metrics.attempts++;metrics.hits++;ui.event.textContent='Smack Down — CATCH!';
+        s.victim=t;t.grabbedBy=player;t.cc=2.4;metrics.grabs++;metrics.attempts++;metrics.hits++;ui.event.textContent='チョップ＆スロー — キャッチ成功';
         cameraShake=.18;
       }else{metrics.attempts++;recordCombo('grab',false);ui.event.textContent='チョップ＆スロー — 空振り';}
     }
@@ -510,12 +550,19 @@ function updateSkill(dt){
     r.leftLeg.rotation.x=-.75*Math.sin(Math.PI*q);r.rightLeg.rotation.x=-.75*Math.sin(Math.PI*q);r.leftCalf.rotation.x=1.05*Math.sin(Math.PI*q);r.rightCalf.rotation.x=1.05*Math.sin(Math.PI*q);
     r.leftArm.rotation.x=-1.15*Math.sin(Math.PI*q);r.rightArm.rotation.x=-1.15*Math.sin(Math.PI*q);r.visual.rotation.x=-.18*Math.sin(Math.PI*q);
     if(q>=.98&&!s.landed){
-      s.landed=true;player.group.position.y=0;aoeHit(s.hop>=3?3.8:2.8,s.hop>=3?30:13,{cc:s.hop>=3?1.25:.35,ccType:s.hop>=3?'DOWN':'STIFFNESS'});recordCombo('predatory',true);impact(player.group.position,0xffa85e,s.hop>=3?1.7:1.0);
-      const keep=key.KeyS&&key.KeyF&&s.hop<3&&player.stamina>=90;
+      s.landed=true;player.group.position.y=0;
+      const keep=key.KeyS&&key.KeyF&&player.stamina>=90;
+      recordPredatoryHop();
       if(keep){
-        player.stamina-=90;s.hop++;s.t=0;s.start=player.group.position.clone();s.dir=forwardVec();s.distance=3.5;s.height=3.0+.2*s.hop;s.landed=false;
-        ui.event.textContent='Predatory Hunt — Jump '+s.hop+'/3';
+        aoeHit(2.8,13,{cc:.3,ccType:'STIFFNESS'});impact(player.group.position,0xffa85e,.85);
+        player.stamina-=90;s.hop++;s.t=0;s.start=player.group.position.clone();s.dir=forwardVec();s.distance=3.5;s.height=3.15;s.landed=false;
+        player.sa=Math.max(player.sa,.72);
+        ui.event.textContent='プレデターハンティング — 連続ジャンプ '+s.hop+'回目';
         return;
+      }else{
+        aoeHit(3.8,30,{cc:1.25,ccType:'DOWN'});impact(player.group.position,0xffa85e,1.7);
+        player.predatoryFollow=1.25;finishPredatoryChain();
+        ui.event.textContent='プレデターハンティング — 最終着地 / 左クリックでフォーリングボルダー';
       }
     }
   }
@@ -581,7 +628,7 @@ function updateSkill(dt){
 
   if(s.t>=s.duration){
     if(s.name==='Smack Down'&&s.victim)s.victim.grabbedBy=null;
-    if(s.name==='Predatory Hunt'){player.group.position.y=0;if(s.hop>=3)player.predatoryFollow=1.0;}
+    if(s.name==='Predatory Hunt'){player.group.position.y=0;}
     if(s.name==='Beastly Wind Slash')player.fg=false;
     player.skill=null;resetRig(player);
     if(ui.currentSkill)ui.currentSkill.textContent='—';
@@ -632,7 +679,7 @@ function timers(a,dt){
 function laUpdate(dt){
   if(state.mode!=='la')return;
   state.laTimer-=dt;
-  if(state.laTimer<=0&&!state.laActive){state.laActive=true;state.laTimer=4;ui.la.hidden=false;ui.event.textContent='LAST ATTACK — PUSH!';const m=world.getObjectByName('laMarker');if(m)m.material.color.setHex(0xe58a32);}
+  if(state.laTimer<=0&&!state.laActive){state.laActive=true;state.laTimer=4;ui.la.hidden=false;ui.event.textContent='ラストアタック — 突入！';const m=world.getObjectByName('laMarker');if(m)m.material.color.setHex(0xe58a32);}
   else if(state.laTimer<=0&&state.laActive){state.laActive=false;state.laTimer=10;ui.la.hidden=true;const m=world.getObjectByName('laMarker');if(m)m.material.color.setHex(0x4b4c4e);}
 }
 
@@ -658,11 +705,11 @@ function cameraUpdate(dt){
 function uiUpdate(){
   if(!player)return;
   const hp=clamp(player.hp/player.maxHp,0,1);ui.hpFill.style.width=(hp*100)+'%';ui.hpText.textContent='HP '+Math.ceil(player.hp)+' / '+player.maxHp;
-  const st=clamp(player.stamina/player.maxStamina,0,1);if(ui.staminaFill)ui.staminaFill.style.width=(st*100)+'%';if(ui.staminaText)ui.staminaText.textContent='STAMINA '+Math.ceil(player.stamina)+' / '+player.maxStamina;
-  if(ui.rageText)ui.rageText.textContent=player.rage>0?'BESTIAL RAGE: '+player.rage.toFixed(1)+'s':'BESTIAL RAGE: OFF';
-  ui.protection.textContent=player.cc>0?'CC':player.invuln>0?'IFRAME':player.sa>0?'SA':player.fg?'FG':'NONE';
-  ui.metrics.textContent='Hits '+metrics.hits+'/'+metrics.attempts+' ・ CC '+metrics.cc+' ・ Grab '+metrics.grabs+' ・ Deaths '+metrics.deaths;if(ui.statLine)ui.statLine.textContent='AP '+Math.round(player.stats.AP)+' ・ DR '+Math.round(player.stats.DR)+' ・ AS '+Math.round(player.stats.AS)+'% ・ MS '+Math.round(player.stats.MS)+'% ・ CRIT +'+Math.round(player.stats.CRIT)+'%';renderBuffs();
-  for(const n of Object.keys(player.cds)){const el=document.getElementById('cd-'+n);if(!el)continue;const v=player.cds[n];el.textContent=v>0?v.toFixed(1)+'s':'READY';el.parentElement.classList.toggle('cooldown',v>0);el.parentElement.classList.toggle('rage',n==='rage'&&player.rage>0);}
+  const st=clamp(player.stamina/player.maxStamina,0,1);if(ui.staminaFill)ui.staminaFill.style.width=(st*100)+'%';if(ui.staminaText)ui.staminaText.textContent='持久力 '+Math.ceil(player.stamina)+' / '+player.maxStamina;
+  if(ui.rageText)ui.rageText.textContent=player.rage>0?'野獣状態：残り '+player.rage.toFixed(1)+'秒':'野獣状態：OFF';
+  ui.protection.textContent=player.cc>0?'CC中':player.invuln>0?'無敵':player.sa>0?'スーパーアーマー':player.fg?'前方ガード':'保護なし';
+  ui.metrics.textContent='命中 '+metrics.hits+'/'+metrics.attempts+' ・ CC '+metrics.cc+' ・ キャッチ '+metrics.grabs+' ・ 死亡 '+metrics.deaths;if(ui.statLine)ui.statLine.textContent='攻撃力 '+Math.round(player.stats.AP)+' ・ 防御力 '+Math.round(player.stats.DR)+' ・ 攻撃速度 '+Math.round(player.stats.AS)+'% ・ 移動速度 '+Math.round(player.stats.MS)+'% ・ クリ率 +'+Math.round(player.stats.CRIT)+'%';renderBuffs();
+  for(const n of Object.keys(player.cds)){const el=document.getElementById('cd-'+n);if(!el)continue;const v=player.cds[n];el.textContent=v>0?v.toFixed(1)+'秒':'使用可';el.parentElement.classList.toggle('cooldown',v>0);el.parentElement.classList.toggle('rage',n==='rage'&&player.rage>0);}
 }
 
 function resize(){
