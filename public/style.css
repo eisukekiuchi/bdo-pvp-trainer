@@ -69,3 +69,5 @@
 #roiCanvas{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;pointer-events:none}
 #roiCanvas.selecting{pointer-events:auto}
 .ocrToken{display:inline-block;margin:2px 4px 2px 0;padding:3px 6px;border-radius:5px;background:#172331;border:1px solid #3c566f;color:#b9dfff;font-weight:800}
+
+.actorCc{margin-top:3px;font-size:10px;font-weight:800;color:#ffd37d;text-shadow:0 1px 2px #000}
