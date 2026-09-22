@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PvP練習シミュレーター — 伝承GA</title>
   <link rel="stylesheet" href="./style.css" />
-  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>\n  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
 </head>
 <body>
 <div id="app">
@@ -27,7 +27,7 @@
     <div class="stambar"><div id="staminaFill"></div></div>
     <div class="row small"><span id="staminaText">持久力 1000 / 1000</span><span id="rageText">野獣状態：OFF</span></div>
     <div id="statLine" class="statLine">攻撃力 300 ・ 防御力 400 ・ 攻撃速度 100% ・ 移動速度 100% ・ クリ率 +0%</div>
-    <div class="metrics" id="metrics">命中 0/0 ・ CC 0 ・ キャッチ 0 ・ 死亡 0</div>
+    <div class="metrics" id="metrics">命中 0/0 ・ CC成功 0 ・ キャッチ 0 ・ 死亡 0</div><div id="targetCcLine" class="ccLine">対象CCカウント：0.0 / 2.0</div>
     <div id="eventText">開始してください</div>
     <div id="currentSkillText" class="currentSkill">—</div>
   </div>
@@ -73,11 +73,14 @@
       <div class="observeSide">
         <div class="observeStatus"><span>画面入力</span><b id="captureStatus">停止中</b></div>
         <div class="observeStatus"><span>動作検出</span><b id="motionStatus">—</b></div>
-        <div class="observeStatus"><span>ゲームキー連携</span><b id="bridgeStatus">待機中</b></div>
-        <label class="recordName">接続コード<input id="bridgeCode" readonly></label>
+        <div class="observeStatus"><span>キー表示OCR</span><b id="ocrStatus">未設定</b></div>
         <div class="observeButtons">
-          <button id="captureStart">画面を選んで観察開始</button>
+          <button id="captureStart">画面共有を選んで観察開始</button>
           <button id="captureStop" disabled>観察停止</button>
+        </div>
+        <div class="observeButtons">
+          <button id="roiSelect">キー表示範囲を選択</button>
+          <button id="ocrToggle" disabled>キーOCR開始</button>
         </div>
         <hr>
         <label class="recordName">登録名<input id="comboRecordName" placeholder="例：GA キャッチコンボ"></label>
@@ -90,7 +93,7 @@
           <b>観察データ</b>
           <div id="learnStats">動作区間 0 / 入力 0</div>
         </div>
-        <p class="observeNote">Discordの配信ウィンドウ、ゲーム画面、モニターのいずれでも選択できます。外部ゲームのキー入力はWindows入力ブリッジ接続時のみ取得します。</p>
+        <p class="observeNote"><b>黒い砂漠本体は選択しないでください。</b> Discord等の画面共有・配信ウィンドウだけを選びます。キー入力は配信画面に表示されるキーUIを画像としてOCRし、ゲーム本体へはアクセスしません。</p>
       </div>
     </div>
   </div>
