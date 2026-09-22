@@ -31,7 +31,7 @@ const ui={
   currentSkill:document.getElementById('currentSkillText'),
   statLine:document.getElementById('statLine'),buffList:document.getElementById('buffList'),comboPanel:document.getElementById('comboPanel'),comboResult:document.getElementById('comboResult'),comboName:document.getElementById('comboName'),comboSteps:document.getElementById('comboSteps'),comboHint:document.getElementById('comboHint'),
   comboSelect:document.getElementById('comboSelect'),baseHP:document.getElementById('baseHP'),baseAP:document.getElementById('baseAP'),baseDR:document.getElementById('baseDR'),worldLabels:document.getElementById('worldLabels'),inputFlash:document.getElementById('inputFlash'),
-  observeBtn:document.getElementById('observeBtn'),observePanel:document.getElementById('observePanel'),observeClose:document.getElementById('observeClose'),observeVideo:document.getElementById('observeVideo'),captureStart:document.getElementById('captureStart'),captureStop:document.getElementById('captureStop'),captureStatus:document.getElementById('captureStatus'),motionStatus:document.getElementById('motionStatus'),bridgeStatus:document.getElementById('bridgeStatus'),comboRecordName:document.getElementById('comboRecordName'),comboRecordStart:document.getElementById('comboRecordStart'),comboRecordStop:document.getElementById('comboRecordStop'),recordedInputs:document.getElementById('recordedInputs'),learnStats:document.getElementById('learnStats')
+  observeBtn:document.getElementById('observeBtn'),observePanel:document.getElementById('observePanel'),observeClose:document.getElementById('observeClose'),observeVideo:document.getElementById('observeVideo'),captureStart:document.getElementById('captureStart'),captureStop:document.getElementById('captureStop'),captureStatus:document.getElementById('captureStatus'),motionStatus:document.getElementById('motionStatus'),bridgeStatus:document.getElementById('bridgeStatus'),bridgeCode:document.getElementById('bridgeCode'),comboRecordName:document.getElementById('comboRecordName'),comboRecordStart:document.getElementById('comboRecordStart'),comboRecordStop:document.getElementById('comboRecordStop'),recordedInputs:document.getElementById('recordedInputs'),learnStats:document.getElementById('learnStats')
 };
 
 let selectedMode='duel';
@@ -39,7 +39,7 @@ ui.modes.forEach(b=>b.addEventListener('click',()=>{ui.modes.forEach(x=>x.classL
 ui.enemyCount.addEventListener('input',()=>ui.enemyVal.textContent=ui.enemyCount.value);
 ui.allyCount.addEventListener('input',()=>ui.allyVal.textContent=ui.allyCount.value);
 ui.settings.addEventListener('click',()=>{ui.menu.classList.add('show');document.exitPointerLock?.();});
-ui.observeBtn?.addEventListener('click',()=>{ui.observePanel.classList.add('show');document.exitPointerLock?.();connectInputBridge();});
+ui.observeBtn?.addEventListener('click',()=>{ui.observePanel.classList.add('show');document.exitPointerLock?.();ensureBridgeCode();connectInputBridge();});
 ui.observeClose?.addEventListener('click',()=>ui.observePanel.classList.remove('show'));
 ui.captureStart?.addEventListener('click',startObservation);ui.captureStop?.addEventListener('click',stopObservation);
 ui.comboRecordStart?.addEventListener('click',startComboRecording);ui.comboRecordStop?.addEventListener('click',stopComboRecording);
@@ -499,15 +499,29 @@ function inferBridge(){
   if(bridgeMouse[2]&&(bridgeKeys.KeyA||bridgeKeys.KeyD))bridgeSkill('shake');else if(bridgeMouse[2]&&bridgeKeys.KeyS)bridgeSkill('beastly');
   if(bridgeMouse[0]&&bridgeKeys.KeyS)bridgeSkill('frenzy');if(bridgeMouse[0]&&bridgeMouse[2])bridgeSkill('thunder');
 }
+function ensureBridgeCode(){
+  if(!ui.bridgeCode)return '';
+  if(!ui.bridgeCode.value)ui.bridgeCode.value=Math.random().toString(36).slice(2,8).toUpperCase();
+  return ui.bridgeCode.value;
+}
 function connectInputBridge(){
   if(bridge&&bridge.readyState<=1)return;
+  const room=ensureBridgeCode();if(!room)return;
   try{
-    bridge=new WebSocket('ws://127.0.0.1:8765');
-    bridge.onopen=()=>ui.bridgeStatus.textContent='Windows入力ブリッジ接続済み';
-    bridge.onclose=()=>ui.bridgeStatus.textContent='Web内入力のみ';
-    bridge.onerror=()=>ui.bridgeStatus.textContent='Web内入力のみ';
-    bridge.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type==='key'){bridgeKeys[m.code]=!!m.down;inferBridge();}if(m.type==='mouse'){bridgeMouse[m.button]=!!m.down;inferBridge();}}catch{}};
-  }catch{ui.bridgeStatus.textContent='Web内入力のみ';}
+    const proto=location.protocol==='https:'?'wss:':'ws:';
+    bridge=new WebSocket(proto+'//'+location.host+'/bridge?room='+encodeURIComponent(room)+'&role=web');
+    bridge.onopen=()=>{ui.bridgeStatus.textContent='入力ブリッジ待機中';};
+    bridge.onclose=()=>ui.bridgeStatus.textContent='未接続';
+    bridge.onerror=()=>ui.bridgeStatus.textContent='接続エラー';
+    bridge.onmessage=e=>{try{
+      const m=JSON.parse(e.data);
+      if(m.type==='hello'&&m.source==='companion'){ui.bridgeStatus.textContent='Windows入力ブリッジ接続済み';return;}
+      if(m.type==='peer'&&m.role==='companion'&&m.event==='join'){ui.bridgeStatus.textContent='Windows入力ブリッジ接続済み';return;}
+      if(m.type==='peer'&&m.role==='companion'&&m.event==='leave'){ui.bridgeStatus.textContent='入力ブリッジ待機中';return;}
+      if(m.type==='key'){bridgeKeys[m.code]=!!m.down;inferBridge();}
+      if(m.type==='mouse'){bridgeMouse[m.button]=!!m.down;inferBridge();}
+    }catch{}};
+  }catch{ui.bridgeStatus.textContent='未接続';}
 }
 function impact(pos,color=0xffb460,size=1){
   const ring=new THREE.Mesh(new THREE.RingGeometry(.45,.62,40),new THREE.MeshBasicMaterial({color,side:THREE.DoubleSide,transparent:true,opacity:.95}));
@@ -918,4 +932,4 @@ ui.start.addEventListener('click',()=>{spawnScenario();ui.menu.classList.remove(
 makeArena('arena');
 player=makeActor('blue','伝承GA',new THREE.Vector3(0,0,-8),true);attachRealisticModel(player);
 bots=[makeActor('red','Enemy 1',new THREE.Vector3(0,0,5))];
-camera.position.set(0,5,-13);camera.lookAt(0,1,0);loadCustomCombos();uiUpdate();loop();
+camera.position.set(0,5,-13);camera.lookAt(0,1,0);ensureBridgeCode();loadCustomCombos();uiUpdate();loop();
