@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PvP練習シミュレーター — 伝承GA</title>
   <link rel="stylesheet" href="./style.css" />
-  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}</script>
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
 </head>
 <body>
 <div id="app">
@@ -17,7 +17,7 @@
       <div class="brand">PvP練習シミュレーター <span>伝承GA v0.4</span></div>
       <div class="sub">コンボ判定 ・ CC状態 ・ バフ/デバフ ・ スキル練成</div>
     </div>
-    <button id="settingsBtn" class="ghost">環境設定</button>
+    <div class="topActions"><button id="observeBtn" class="ghost">画面観察・学習</button><button id="settingsBtn" class="ghost">環境設定</button></div>
   </div>
 
   <div id="statusPanel" class="panel">
@@ -66,6 +66,33 @@
   </div>
 
   <div id="laBanner" hidden>ラストアタック</div>
+  <div id="observePanel" class="observePanel">
+    <div class="observeHead"><b>画面観察・コンボ学習</b><button id="observeClose">×</button></div>
+    <div class="observeBody">
+      <video id="observeVideo" autoplay muted playsinline></video>
+      <div class="observeSide">
+        <div class="observeStatus"><span>画面入力</span><b id="captureStatus">停止中</b></div>
+        <div class="observeStatus"><span>動作検出</span><b id="motionStatus">—</b></div>
+        <div class="observeStatus"><span>ゲームキー連携</span><b id="bridgeStatus">Web内入力のみ</b></div>
+        <div class="observeButtons">
+          <button id="captureStart">画面を選んで観察開始</button>
+          <button id="captureStop" disabled>観察停止</button>
+        </div>
+        <hr>
+        <label class="recordName">登録名<input id="comboRecordName" placeholder="例：GA キャッチコンボ"></label>
+        <div class="observeButtons">
+          <button id="comboRecordStart">コンボ記録開始</button>
+          <button id="comboRecordStop" disabled>停止して登録</button>
+        </div>
+        <div id="recordedInputs" class="recordedInputs">まだ入力はありません</div>
+        <div class="learnStats">
+          <b>観察データ</b>
+          <div id="learnStats">動作区間 0 / 入力 0</div>
+        </div>
+        <p class="observeNote">Discordの配信ウィンドウ、ゲーム画面、モニターのいずれでも選択できます。外部ゲームのキー入力はWindows入力ブリッジ接続時のみ取得します。</p>
+      </div>
+    </div>
+  </div>
   <div id="crosshair">＋</div>
 
   <div id="menu" class="menu show">
