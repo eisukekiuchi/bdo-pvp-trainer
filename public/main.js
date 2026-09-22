@@ -150,15 +150,15 @@ function spawnScenario(){
   clearGroup(actors);clearGroup(fx);bots=[];allies=[];Object.assign(metrics,{attempts:0,hits:0,cc:0,grabs:0,deaths:0,defenses:0});
   state.mode=selectedMode;state.difficulty=ui.difficulty.value;state.environment=ui.environment.value;state.laTimer=8;state.laActive=false;ui.la.hidden=true;readEnhancements();buildCombo();if(ui.worldLabels)ui.worldLabels.innerHTML='';
   makeArena(state.environment);
-  player=makeActor('blue','Succession Berserker',new THREE.Vector3(0,0,-8),true);player.statsBase.HP=Number(ui.baseHP?.value||5000);player.statsBase.AP=Number(ui.baseAP?.value||300);player.statsBase.DR=Number(ui.baseDR?.value||400);refreshStats(player);player.hp=player.maxHp;
-  if(state.mode==='duel')bots.push(makeActor('red','Enemy 1',new THREE.Vector3(0,0,5)));
+  player=makeActor('blue','伝承GA',new THREE.Vector3(0,0,-8),true);player.statsBase.HP=Number(ui.baseHP?.value||5000);player.statsBase.AP=Number(ui.baseAP?.value||300);player.statsBase.DR=Number(ui.baseDR?.value||400);refreshStats(player);player.hp=player.maxHp;
+  if(state.mode==='duel')bots.push(makeActor('red','敵1',new THREE.Vector3(0,0,5)));
   if(state.mode==='many'){
     const n=Number(ui.enemyCount.value);
-    for(let i=0;i<n;i++){const a=i/n*Math.PI*2;bots.push(makeActor('red','Enemy '+(i+1),new THREE.Vector3(Math.cos(a)*7,0,Math.sin(a)*7+2)));}
+    for(let i=0;i<n;i++){const a=i/n*Math.PI*2;bots.push(makeActor('red','敵'+(i+1),new THREE.Vector3(Math.cos(a)*7,0,Math.sin(a)*7+2)));}
   }
   if(state.mode==='la'){
     const en=Math.max(8,Number(ui.enemyCount.value)),al=Number(ui.allyCount.value);
-    for(let i=0;i<al;i++)allies.push(makeActor('blue','Ally '+(i+1),new THREE.Vector3(-7+(i%4)*2,0,-1+Math.floor(i/4)*2)));
+    for(let i=0;i<al;i++)allies.push(makeActor('blue','味方'+(i+1),new THREE.Vector3(-7+(i%4)*2,0,-1+Math.floor(i/4)*2)));
     for(let i=0;i<en;i++)bots.push(makeActor('red','Enemy '+(i+1),new THREE.Vector3(4+(i%4)*2,0,-2+Math.floor(i/4)*2)));
     const marker=new THREE.Mesh(new THREE.CylinderGeometry(3.6,3.6,.08,48),new THREE.MeshStandardMaterial({color:0x4b4c4e,emissive:0x111111}));marker.name='laMarker';marker.position.set(0,.04,6);world.add(marker);
   }
@@ -426,13 +426,13 @@ function useShake(){
   ui.event.textContent='振り払い — 横回避 / 溶岩貫通の再使用待機を初期化';
 }
 function useGrab(){
-  if(!skillReady('grab')||player.skill)return;
+  if(!skillReady('grab')||player.skill)return;flashInput('grab',true,'入力');
   setCd('grab',15);player.sa=.62;player.attackCd=1.55;
   setSkill('Smack Down',1.62,{victim:null,grabChecked:false,slammed:false});
   ui.event.textContent='チョップ＆スロー — キャッチ開始';
 }
 function usePredatory(){
-  if(!skillReady('predatory')||!spendStamina(250)||player.skill)return;
+  if(!skillReady('predatory')||!spendStamina(250)||player.skill)return;flashInput('predatory',true,'開始');
   setCd('predatory',13);player.sa=2.4;player.rage=Math.max(player.rage,20);player.healTick=5;
   setSkill('Predatory Hunt',.58,{hop:1,start:player.group.position.clone(),dir:forwardVec(),distance:3.7,height:3.2,landed:false});
   ui.event.textContent='プレデターハンティング — S+F長押しで連続ジャンプ';
