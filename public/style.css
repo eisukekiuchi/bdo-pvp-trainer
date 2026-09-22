@@ -45,3 +45,20 @@
 #worldLabels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 .currentSkill{margin-top:6px;color:#9ed0ff;font-size:11px;font-weight:700}
 @media(max-width:1200px){.compactPanel{display:none}.comboPanel{width:calc(100% - 36px);top:70px}.enhanceGrid{grid-template-columns:1fr}.statInputs{grid-template-columns:1fr 1fr 1fr}}
+
+.topActions{display:flex;gap:8px;pointer-events:auto}
+.observePanel{position:absolute;right:18px;bottom:18px;width:min(820px,calc(100% - 36px));background:rgba(8,12,18,.97);border:1px solid #39434e;border-radius:12px;box-shadow:0 18px 60px rgba(0,0,0,.45);z-index:30;display:none;overflow:hidden}
+.observePanel.show{display:block}
+.observeHead{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid #313a44;font-size:14px}
+.observeHead button{background:transparent;border:0;color:#fff;font-size:22px;cursor:pointer}
+.observeBody{display:grid;grid-template-columns:minmax(320px,1.35fr) minmax(260px,.9fr);gap:12px;padding:12px}
+#observeVideo{width:100%;aspect-ratio:16/9;background:#05070a;border:1px solid #2e3741;border-radius:8px;object-fit:contain}
+.observeSide{font-size:12px}
+.observeStatus{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #252d35}.observeStatus b{color:#e5d0a1}
+.observeButtons{display:flex;gap:8px;margin:10px 0}.observeButtons button{flex:1;background:#171e26;color:#fff;border:1px solid #3a4652;border-radius:7px;padding:9px;cursor:pointer}.observeButtons button:disabled{opacity:.4;cursor:default}
+.recordName{display:block;color:#cbd3dc}.recordName input{width:100%;margin-top:5px;background:#0e141a;border:1px solid #39444f;color:#fff;padding:8px;border-radius:6px}
+.recordedInputs{min-height:54px;max-height:110px;overflow:auto;background:#0d1218;border:1px solid #2e3741;border-radius:7px;padding:8px;line-height:1.6;color:#d4dce5}
+.learnStats{margin-top:10px;padding:8px;background:#11171e;border-radius:7px;border:1px solid #2f3943}
+.observeNote{font-size:10px;line-height:1.5;color:#8f9aa5;margin:10px 0 0}
+.realModelBadge{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);font-size:10px;padding:4px 7px;border-radius:5px;background:rgba(6,10,14,.72);border:1px solid #40505e;color:#bad1e4;pointer-events:none}
+@media(max-width:900px){.observeBody{grid-template-columns:1fr}.observePanel{max-height:80vh;overflow:auto}}
