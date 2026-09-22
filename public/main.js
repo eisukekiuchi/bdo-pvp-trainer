@@ -27,7 +27,9 @@ const ui={
   modeLabel:document.getElementById('modeLabel'),aiLabel:document.getElementById('aiLabel'),hpFill:document.getElementById('hpFill'),hpText:document.getElementById('hpText'),
   protection:document.getElementById('protection'),metrics:document.getElementById('metrics'),event:document.getElementById('eventText'),la:document.getElementById('laBanner'),
   staminaFill:document.getElementById('staminaFill'),staminaText:document.getElementById('staminaText'),rageText:document.getElementById('rageText'),
-  currentSkill:document.getElementById('currentSkillText')
+  currentSkill:document.getElementById('currentSkillText'),
+  statLine:document.getElementById('statLine'),buffList:document.getElementById('buffList'),comboPanel:document.getElementById('comboPanel'),comboResult:document.getElementById('comboResult'),comboName:document.getElementById('comboName'),comboSteps:document.getElementById('comboSteps'),comboHint:document.getElementById('comboHint'),
+  comboSelect:document.getElementById('comboSelect'),baseHP:document.getElementById('baseHP'),baseAP:document.getElementById('baseAP'),baseDR:document.getElementById('baseDR'),worldLabels:document.getElementById('worldLabels')
 };
 
 let selectedMode='duel';
@@ -40,7 +42,15 @@ const key=Object.create(null);
 let mouseLeft=false,mouseRight=false,yaw=0,pitch=-0.18,started=false,last=performance.now();
 let cameraShake=0;
 const metrics={attempts:0,hits:0,cc:0,grabs:0,deaths:0,defenses:0};
-const state={mode:'duel',difficulty:'Normal',environment:'arena',laTimer:0,laActive:false};
+const state={mode:'duel',difficulty:'Normal',environment:'arena',laTimer:0,laActive:false,enh56:'blastBash',enh57:'bestialDestroyer',enh58:'berserkerStorm'};
+const SKILL_NAME={
+  lava:'溶岩貫通',shake:'振り払い',grab:'チョップ＆スロー',predatory:'プレデターハンティング',falling:'フォーリングボルダー',
+  beastly:'残酷な風斬',frenzy:'バーサークデストロイヤー',thunder:'ブラストライトニング',rage:'止められない野獣',
+  blastBash:'ブラストバッシュ',blastRage:'ブラストレイジ',bestialDestroyer:'ベスティアルデストロイヤー',bestialRage:'ベスティアルレイス',
+  berserkerStorm:'バーサーカーストーム',berserkerLord:'バーサーカーロード'
+};
+const combo={mode:'free',name:'Free Practice',steps:[],index:0,result:'WAIT',lastAt:0,window:3.0,history:[]};
+
 const clock=new THREE.Clock();
 
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
@@ -121,8 +131,9 @@ function makeActor(team,name,pos,isPlayer=false){
     hp:isPlayer?180:100,maxHp:isPlayer?180:100,stamina:isPlayer?1000:0,maxStamina:isPlayer?1000:0,
     speed:isPlayer?7.1:4.45,cc:0,invuln:0,sa:0,fg:false,alive:true,respawn:0,decision:Math.random()*.5,target:null,
     attackCd:0,dodgeCd:0,moving:false,moveAmount:0,grabbedBy:null,
-    cds:{lava:0,shake:0,grab:0,predatory:0,beastly:0,frenzy:0,thunder:0,rage:0},
-    rage:0,healTick:5,lavaChain:0,skill:null,lastSkill:''
+    cds:{lava:0,shake:0,grab:0,predatory:0,falling:0,beastly:0,frenzy:0,thunder:0,rage:0,enh56:0,enh57:0,enh58:0},
+    rage:0,healTick:5,lavaChain:0,predatoryFollow:0,skill:null,lastSkill:'',status:'NORMAL',statusTimer:0,effects:{},statusEl:null,
+    statsBase:{HP:isPlayer?5000:4200,AP:isPlayer?300:280,DR:isPlayer?400:360,AS:100,MS:100,CRIT:0},stats:{HP:isPlayer?5000:4200,AP:isPlayer?300:280,DR:isPlayer?400:360,AS:100,MS:100,CRIT:0},baseSpeed:isPlayer?7.1:4.45
   };
 }
 
@@ -137,9 +148,9 @@ function nearestEnemy(a){
 
 function spawnScenario(){
   clearGroup(actors);clearGroup(fx);bots=[];allies=[];Object.assign(metrics,{attempts:0,hits:0,cc:0,grabs:0,deaths:0,defenses:0});
-  state.mode=selectedMode;state.difficulty=ui.difficulty.value;state.environment=ui.environment.value;state.laTimer=8;state.laActive=false;ui.la.hidden=true;
+  state.mode=selectedMode;state.difficulty=ui.difficulty.value;state.environment=ui.environment.value;state.laTimer=8;state.laActive=false;ui.la.hidden=true;readEnhancements();buildCombo();if(ui.worldLabels)ui.worldLabels.innerHTML='';
   makeArena(state.environment);
-  player=makeActor('blue','Succession Berserker',new THREE.Vector3(0,0,-8),true);
+  player=makeActor('blue','Succession Berserker',new THREE.Vector3(0,0,-8),true);player.statsBase.HP=Number(ui.baseHP?.value||5000);player.statsBase.AP=Number(ui.baseAP?.value||300);player.statsBase.DR=Number(ui.baseDR?.value||400);refreshStats(player);player.hp=player.maxHp;
   if(state.mode==='duel')bots.push(makeActor('red','Enemy 1',new THREE.Vector3(0,0,5)));
   if(state.mode==='many'){
     const n=Number(ui.enemyCount.value);
@@ -151,7 +162,7 @@ function spawnScenario(){
     for(let i=0;i<en;i++)bots.push(makeActor('red','Enemy '+(i+1),new THREE.Vector3(4+(i%4)*2,0,-2+Math.floor(i/4)*2)));
     const marker=new THREE.Mesh(new THREE.CylinderGeometry(3.6,3.6,.08,48),new THREE.MeshStandardMaterial({color:0x4b4c4e,emissive:0x111111}));marker.name='laMarker';marker.position.set(0,.04,6);world.add(marker);
   }
-  bots.forEach(b=>b.target=player);allies.forEach(a=>a.target=nearestEnemy(a));
+  bots.forEach(b=>{b.target=player;createActorLabel(b)});allies.forEach(a=>{a.target=nearestEnemy(a);createActorLabel(a)});
   ui.modeLabel.textContent=state.mode==='duel'?'1v1':state.mode==='many'?'1v'+bots.length:'LA Scenario';
   ui.aiLabel.textContent='AI: '+state.difficulty;ui.event.textContent='伝承GA訓練開始';started=true;
 }
@@ -203,6 +214,98 @@ function isInFront(target,attacker){
   return f.dot(to)>.05;
 }
 
+function readEnhancements(){
+  state.enh56=document.querySelector('input[name="enh56"]:checked')?.value||'blastBash';
+  state.enh57=document.querySelector('input[name="enh57"]:checked')?.value||'bestialDestroyer';
+  state.enh58=document.querySelector('input[name="enh58"]:checked')?.value||'berserkerStorm';
+}
+function buildCombo(){
+  combo.mode=ui.comboSelect?.value||'free';combo.index=0;combo.result='WAIT';combo.lastAt=0;combo.history=[];
+  if(combo.mode==='catch'){combo.name='接近→横移動→再接近→キャッチ→追撃';combo.steps=['lava','shake','lava','grab','frenzy'];}
+  else if(combo.mode==='predator'){combo.name='Predatory x3 → Falling Boulder';combo.steps=['predatory','predatory','predatory','falling'];}
+  else if(combo.mode==='enhance'){combo.name='練成3段ルート';combo.steps=[state.enh56,state.enh57,state.enh58];}
+  else{combo.name='Free Practice';combo.steps=[];}
+  renderCombo();
+}
+function recordCombo(id,success=true){
+  if(combo.mode==='free')return;
+  const now=performance.now()/1000;
+  if(combo.result==='SUCCESS'||combo.result==='FAILED')return;
+  const expected=combo.steps[combo.index];
+  if(!success){combo.result='FAILED';combo.history.push({id,state:'fail'});ui.comboHint.textContent=SKILL_NAME[id]+' が失敗';renderCombo();return;}
+  if(expected===id){
+    combo.history.push({id,state:'done'});combo.index++;combo.lastAt=now;
+    if(combo.index>=combo.steps.length){combo.result='SUCCESS';ui.comboHint.textContent='COMBO COMPLETE';}
+    else ui.comboHint.textContent='NEXT: '+SKILL_NAME[combo.steps[combo.index]];
+  }else{
+    combo.result='FAILED';combo.history.push({id,state:'fail'});ui.comboHint.textContent='順番違い: '+SKILL_NAME[id]+' / expected '+SKILL_NAME[expected];
+  }
+  renderCombo();
+}
+function comboTick(){
+  if(combo.mode==='free'||combo.result!=='WAIT'||combo.index===0)return;
+  const now=performance.now()/1000;
+  if(now-combo.lastAt>combo.window){combo.result='FAILED';ui.comboHint.textContent='TIME OUT';renderCombo();}
+}
+function renderCombo(){
+  if(!ui.comboPanel)return;
+  ui.comboName.textContent=combo.name;ui.comboResult.textContent=combo.result;
+  ui.comboPanel.classList.toggle('success',combo.result==='SUCCESS');ui.comboPanel.classList.toggle('failed',combo.result==='FAILED');
+  ui.comboSteps.innerHTML='';
+  combo.steps.forEach((id,i)=>{const s=document.createElement('span');s.className='comboStep '+(i<combo.index?'done':i===combo.index&&combo.result==='WAIT'?'current':combo.result==='FAILED'&&i===combo.index?'fail':'');s.textContent=(i+1)+'. '+SKILL_NAME[id];ui.comboSteps.appendChild(s);});
+}
+function applyEffect(a,id,label,duration,mods={},kind='good'){
+  a.effects[id]={id,label,time:duration,duration,mods,kind};
+  refreshStats(a);
+}
+function refreshStats(a){
+  const s={...a.statsBase};
+  for(const e of Object.values(a.effects||{})){for(const [k,v] of Object.entries(e.mods||{})){s[k]=(s[k]??0)+v;}}
+  a.stats=s;a.speed=a.baseSpeed*(s.MS/100);
+  if(a.maxHp!==s.HP){const ratio=a.maxHp?Math.min(1,a.hp/a.maxHp):1;a.maxHp=s.HP;a.hp=Math.min(a.maxHp,Math.max(a.hp,a.maxHp*ratio));}
+}
+function setStatus(a,type,duration){
+  a.status=type;a.statusTimer=Math.max(a.statusTimer||0,duration||0);
+  if(type==='DOWN'||type==='BOUND')a.cc=Math.max(a.cc,duration||1.2);
+  if(type==='FLOAT'||type==='STIFFNESS'||type==='STUN'||type==='GRABBED')a.cc=Math.max(a.cc,duration||.8);
+}
+function statusClass(a){return String(a.status||'NORMAL').toLowerCase();}
+function createActorLabel(a){
+  if(a.isPlayer||!ui.worldLabels)return;
+  const el=document.createElement('div');el.className='actorLabel';
+  el.innerHTML='<div class="actorName"></div><div class="actorHp"><i></i></div><span class="actorState normal">NORMAL</span>';
+  ui.worldLabels.appendChild(el);a.statusEl=el;
+}
+function updateActorLabels(){
+  if(!camera)return;
+  for(const a of [...bots,...allies]){
+    const el=a.statusEl;if(!el)continue;
+    if(!a.alive||!a.group.visible){el.style.display='none';continue;}
+    const p=a.group.position.clone().add(new THREE.Vector3(0,3.0,0)).project(camera);
+    if(p.z<-1||p.z>1){el.style.display='none';continue;}
+    el.style.display='block';el.style.left=((p.x*.5+.5)*innerWidth)+'px';el.style.top=((-p.y*.5+.5)*innerHeight)+'px';
+    el.querySelector('.actorName').textContent=a.name;
+    el.querySelector('.actorHp i').style.width=(Math.max(0,a.hp/a.maxHp)*100)+'%';
+    const st=el.querySelector('.actorState');st.textContent=a.status||'NORMAL';st.className='actorState '+statusClass(a);
+  }
+}
+function buffTick(a,dt){
+  for(const [id,e] of Object.entries(a.effects||{})){
+    e.time-=dt;
+    if(e.mods?.DOT&&e.time>0){a.hp-=e.mods.DOT*dt;}
+    if(e.time<=0)delete a.effects[id];
+  }
+  refreshStats(a);
+}
+function renderBuffs(){
+  if(!ui.buffList||!player)return;
+  const entries=Object.values(player.effects||{});
+  ui.buffList.innerHTML='';
+  if(!entries.length){ui.buffList.innerHTML='<span class="muted">なし</span>';return;}
+  for(const e of entries){const x=document.createElement('span');x.className='buffChip '+(e.kind==='bad'?'bad':'good');x.textContent=e.label+' '+e.time.toFixed(1)+'s';ui.buffList.appendChild(x);}
+}
+function currentEnhancementName(level){return SKILL_NAME[level===56?state.enh56:level===57?state.enh57:state.enh58];}
+
 function impact(pos,color=0xffb460,size=1){
   const ring=new THREE.Mesh(new THREE.RingGeometry(.45,.62,40),new THREE.MeshBasicMaterial({color,side:THREE.DoubleSide,transparent:true,opacity:.95}));
   ring.rotation.x=-Math.PI/2;ring.position.copy(pos);ring.position.y=.04;ring.userData={life:.42,max:.42,expand:4.4*size};fx.add(ring);
@@ -224,9 +327,14 @@ function damage(attacker,target,amount,opts={}){
   if(attacker===player)metrics.attempts++;
   if(target.invuln>0){if(attacker===player)ui.event.textContent='MISS — iframe';else metrics.defenses++;return false;}
   if(target.fg&&isInFront(target,attacker)&&!opts.grab){if(attacker===player)ui.event.textContent='BLOCK — Forward Guard';else metrics.defenses++;return false;}
-  target.hp-=amount;if(attacker===player)metrics.hits++;
-  if(opts.cc&&target.sa<=0&&!target.fg){target.cc=Math.max(target.cc,opts.cc);if(attacker===player)metrics.cc++;}
-  if(opts.grab){target.cc=Math.max(target.cc,2.2);if(attacker===player)metrics.grabs++;}
+  const ap=attacker.stats?.AP||300,dr=target.stats?.DR||350;
+  const scaled=amount*clamp(ap/300,.55,2.6)*(1-clamp(dr/2200,0,.48));
+  target.hp-=scaled;if(attacker===player)metrics.hits++;
+  if(opts.cc&&target.sa<=0&&!target.fg){setStatus(target,opts.ccType||'STIFFNESS',opts.cc);if(attacker===player)metrics.cc++;}
+  if(opts.grab){setStatus(target,'GRABBED',opts.cc||1.0);if(attacker===player)metrics.grabs++;}
+  if(opts.heal&&attacker){attacker.hp=Math.min(attacker.maxHp,attacker.hp+opts.heal);}
+  if(opts.targetEffect)applyEffect(target,opts.targetEffect.id,opts.targetEffect.label,opts.targetEffect.duration,opts.targetEffect.mods,'bad');
+  if(opts.selfEffect&&attacker)applyEffect(attacker,opts.selfEffect.id,opts.selfEffect.label,opts.selfEffect.duration,opts.selfEffect.mods,'good');
   if(opts.impact!==false)impact(target.group.position,attacker.team==='blue'?0x77baff:0xff7474,.55);
   if(target.hp<=0)kill(target,attacker);return true;
 }
@@ -265,13 +373,13 @@ function setSkill(name,duration,extra={}){
 function setCd(n,v){player.cds[n]=v;}
 
 function useLava(){
-  if(!skillReady('lava')||!spendStamina(150)||player.skill)return;
+  if(!skillReady('lava')||!spendStamina(150)||player.skill)return;recordCombo('lava',true);
   setCd('lava',8);player.sa=.78;player.lavaChain=1.25;player.attackCd=.7;
   setSkill('Lava Piercer',.72,{dir:forwardVec(),start:player.group.position.clone(),distance:8.5});
   ui.event.textContent='Lava Piercer — SA突進';
 }
 function useShake(){
-  if(!skillReady('shake')||!spendStamina(200)||player.skill)return;
+  if(!skillReady('shake')||!spendStamina(200)||player.skill)return;recordCombo('shake',true);
   setCd('shake',3);player.invuln=.22;player.cds.lava=0;player.lavaChain=1.0;
   const side=key.KeyA?-1:1;
   setSkill('Shake Off',.3,{dir:rightVec().multiplyScalar(side),start:player.group.position.clone(),distance:3.15,side});
@@ -290,18 +398,18 @@ function usePredatory(){
   ui.event.textContent='Predatory Hunt — S+Fを押し続けると連続ジャンプ';
 }
 function useBeastly(){
-  if(!skillReady('beastly')||player.skill)return;
-  setCd('beastly',6);const protectedChain=player.lavaChain>0;if(protectedChain)player.fg=true;
+  if(!skillReady('beastly')||player.skill)return;recordCombo('beastly',true);
+  setCd('beastly',6);const protectedChain=player.lavaChain>0;if(protectedChain)player.fg=true;applyEffect(player,'beastlyAS','攻撃速度 +20%',10,{AS:20});
   setSkill('Beastly Wind Slash',.78,{protectedChain,hit1:false,hit2:false});
   ui.event.textContent=protectedChain?'Beastly Wind Slash — Lava連携FG':'Beastly Wind Slash';
 }
 function useFrenzy(){
-  if(!skillReady('frenzy')||player.skill)return;
+  if(!skillReady('frenzy')||player.skill)return;recordCombo('frenzy',true);
   setCd('frenzy',6);setSkill('Frenzied Destroyer',.82,{hit:false});
   ui.event.textContent='Frenzied Destroyer — 斧叩きつけ';
 }
 function useThunder(){
-  if(!skillReady('thunder')||player.skill)return;
+  if(!skillReady('thunder')||player.skill)return;recordCombo('thunder',true);
   setCd('thunder',14);player.sa=1.7;setSkill('Raging Thunder',1.62,{nextHit:.16,hits:0});
   ui.event.textContent='Raging Thunder — SA回転';
 }
@@ -309,6 +417,42 @@ function useRage(){
   if(!skillReady('rage')||player.skill)return;
   setCd('rage',45);player.sa=.95;player.rage=20;player.healTick=5;player.hp=Math.min(player.maxHp,player.hp+18);
   setSkill('Unstoppable Beast',.88,{roared:false});ui.event.textContent='Unstoppable Beast — Bestial Rage';
+}
+
+function useFallingBoulder(){
+  if(player.skill||player.predatoryFollow<=0||!skillReady('falling'))return;
+  setCd('falling',4);player.predatoryFollow=0;setSkill('Falling Boulder',.7,{hit:false});recordCombo('falling',true);ui.event.textContent='フォーリングボルダー';
+}
+function useEnh56(){
+  if(player.skill||player.cds.enh56>0)return;
+  if(state.enh56==='blastBash'){
+    player.cds.enh56=8;applyEffect(player,'blastBashDR','全ダメージ減少 +20',10,{DR:20});
+    setSkill('Blast Bash',.72,{hit:false,start:player.group.position.clone(),dir:forwardVec()});recordCombo('blastBash',true);ui.event.textContent='ブラストバッシュ';
+  }else{
+    player.cds.enh56=22;player.sa=1.35;applyEffect(player,'blastRageDR','全ダメージ減少 +20',10,{DR:20});
+    setSkill('Blast Rage',1.45,{nextHit:.2,hits:0});recordCombo('blastRage',true);ui.event.textContent='ブラストレイジ — SA';
+  }
+}
+function useEnh57(){
+  if(player.skill||player.cds.enh57>0)return;
+  if(state.enh57==='bestialDestroyer'){
+    player.cds.enh57=10;applyEffect(player,'bestialAP','近接攻撃力 +32',10,{AP:32});
+    setSkill('Bestial Destroyer',.88,{hit:false});recordCombo('bestialDestroyer',true);ui.event.textContent='ベスティアルデストロイヤー';
+  }else{
+    player.cds.enh57=15;player.sa=1.35;
+    setSkill('Bestial Rage',1.3,{hit1:false,hit2:false});recordCombo('bestialRage',true);ui.event.textContent='ベスティアルレイス — SA';
+  }
+}
+function useBerserkerStorm(){
+  if(player.cds.enh58>0)return;
+  player.cds.enh58=8;applyEffect(player,'stormMS','移動速度 +20%',10,{MS:20});
+  setSkill('Berserker Storm',.95,{hit1:false,hit2:false});recordCombo('berserkerStorm',true);ui.event.textContent='バーサーカーストーム';
+}
+function useEnh58(){
+  if(state.enh58==='berserkerStorm'){ui.event.textContent='バーサーカーストーム: 対応練成中に左クリック';return;}
+  if(player.skill||player.cds.enh58>0)return;
+  player.cds.enh58=12;applyEffect(player,'lordDR','全ダメージ減少 +20',10,{DR:20});
+  setSkill('Berserker Lord',1.18,{nextHit:.25,hits:0});recordCombo('berserkerLord',true);ui.event.textContent='バーサーカーロード';
 }
 function useLight(){
   if(player.skill||player.attackCd>0)return;
@@ -340,7 +484,7 @@ function updateSkill(dt){
       if(t&&player.group.position.distanceTo(t.group.position)<=2.35&&t.invuln<=0){
         s.victim=t;t.grabbedBy=player;t.cc=2.4;metrics.grabs++;metrics.attempts++;metrics.hits++;ui.event.textContent='Smack Down — CATCH!';
         cameraShake=.18;
-      }else{metrics.attempts++;ui.event.textContent='Smack Down — 空振り';}
+      }else{metrics.attempts++;recordCombo('grab',false);ui.event.textContent='チョップ＆スロー — 空振り';}
     }
     if(s.victim&&s.victim.alive){
       const f=forwardFromActor(player),rr=new THREE.Vector3(f.z,0,-f.x);
@@ -354,7 +498,7 @@ function updateSkill(dt){
         s.victim.group.position.copy(player.group.position).addScaledVector(f,lerp(.5,1.65,slam));
         s.victim.group.position.y=lerp(3.0,.08,slam);s.victim.group.rotation.x=slam*1.2;
         r.leftArm.rotation.x=lerp(-2.4,.9,slam);r.rightArm.rotation.x=lerp(-2.4,.9,slam);r.pelvis.rotation.x=.38*slam;
-        if(!s.slammed&&p>.81){s.slammed=true;s.victim.grabbedBy=null;damage(player,s.victim,28,{grab:true,cc:1.8});impact(s.victim.group.position,0xffa55f,1.45);ui.event.textContent='Smack Down — SLAM';}
+        if(!s.slammed&&p>.81){s.slammed=true;s.victim.grabbedBy=null;damage(player,s.victim,28,{cc:1.8,ccType:'DOWN'});recordCombo('grab',true);impact(s.victim.group.position,0xffa55f,1.45);ui.event.textContent='チョップ＆スロー — DOWN';}
       }
     }
   }
@@ -366,7 +510,7 @@ function updateSkill(dt){
     r.leftLeg.rotation.x=-.75*Math.sin(Math.PI*q);r.rightLeg.rotation.x=-.75*Math.sin(Math.PI*q);r.leftCalf.rotation.x=1.05*Math.sin(Math.PI*q);r.rightCalf.rotation.x=1.05*Math.sin(Math.PI*q);
     r.leftArm.rotation.x=-1.15*Math.sin(Math.PI*q);r.rightArm.rotation.x=-1.15*Math.sin(Math.PI*q);r.visual.rotation.x=-.18*Math.sin(Math.PI*q);
     if(q>=.98&&!s.landed){
-      s.landed=true;player.group.position.y=0;aoeHit(s.hop>=3?3.8:2.8,s.hop>=3?30:13,{cc:s.hop>=3?1.25:.35});impact(player.group.position,0xffa85e,s.hop>=3?1.7:1.0);
+      s.landed=true;player.group.position.y=0;aoeHit(s.hop>=3?3.8:2.8,s.hop>=3?30:13,{cc:s.hop>=3?1.25:.35,ccType:s.hop>=3?'DOWN':'STIFFNESS'});recordCombo('predatory',true);impact(player.group.position,0xffa85e,s.hop>=3?1.7:1.0);
       const keep=key.KeyS&&key.KeyF&&s.hop<3&&player.stamina>=90;
       if(keep){
         player.stamina-=90;s.hop++;s.t=0;s.start=player.group.position.clone();s.dir=forwardVec();s.distance=3.5;s.height=3.0+.2*s.hop;s.landed=false;
@@ -399,6 +543,37 @@ function updateSkill(dt){
     if(!s.roared&&p>.38){s.roared=true;impact(player.group.position,0xe59b4a,1.65);cameraShake=.26;}
   }
 
+
+  if(s.name==='Falling Boulder'){
+    r.leftArm.rotation.x=-2.0*Math.sin(Math.PI*p);r.rightArm.rotation.x=-2.0*Math.sin(Math.PI*p);r.pelvis.rotation.x=.35*p;
+    if(!s.hit&&p>.58){s.hit=true;aoeHit(3.5,28,{cc:1.55,ccType:'DOWN'});impact(player.group.position,0xffb267,1.4);}
+  }
+  if(s.name==='Blast Bash'){
+    const e=easeOut(p),dir=s.dir;player.group.position.x=lerp(s.start.x,s.start.x+dir.x*4.8,e);player.group.position.z=lerp(s.start.z,s.start.z+dir.z*4.8,e);r.pelvis.rotation.x=-.35;r.leftArm.rotation.x=1.1;r.rightArm.rotation.x=.8;
+    if(!s.hit&&p>.52){s.hit=true;hitNearest(3.0,36,{cc:.8,ccType:'STIFFNESS',targetEffect:{id:'bashSlow',label:'移動速度 -15%',duration:5,mods:{MS:-15}}});impact(player.group.position,0xd4b274,.85);}
+  }
+  if(s.name==='Blast Rage'){
+    r.visual.rotation.y=p*Math.PI*5;r.leftArm.rotation.z=1.3;r.rightArm.rotation.z=-1.3;
+    if(s.t>=s.nextHit&&s.hits<5){s.hits++;s.nextHit+=.22;const final=s.hits===5;aoeHit(3.3,final?25:11,{cc:final?1.3:0,ccType:final?'DOWN':'STIFFNESS',heal:18});slashFx(player.group.position,player.group.rotation.y+s.hits);}
+  }
+  if(s.name==='Bestial Destroyer'){
+    if(p<.5){r.leftArm.rotation.x=-2.4*p*2;r.rightArm.rotation.x=-2.4*p*2;}else{const q=(p-.5)*2;r.leftArm.rotation.x=lerp(-2.4,.9,q);r.rightArm.rotation.x=lerp(-2.4,.9,q);r.pelvis.rotation.x=.5*q;}
+    if(!s.hit&&p>.62){s.hit=true;aoeHit(3.6,42,{cc:1.5,ccType:'DOWN'});impact(player.group.position,0xffa55f,1.5);}
+  }
+  if(s.name==='Bestial Rage'){
+    r.pelvis.rotation.y=p*Math.PI*2.5;r.leftArm.rotation.x=-1.4*Math.sin(Math.PI*p*2);r.rightArm.rotation.x=1.4*Math.sin(Math.PI*p*2);
+    if(!s.hit1&&p>.32){s.hit1=true;aoeHit(3.2,18,{targetEffect:{id:'bestialSlow',label:'移動速度 -20%',duration:5,mods:{MS:-20}}});}
+    if(!s.hit2&&p>.72){s.hit2=true;aoeHit(3.7,28,{cc:1.0,ccType:'BOUND',targetEffect:{id:'bleed',label:'出血',duration:9,mods:{DOT:3}}});impact(player.group.position,0xb85e4a,1.1);}
+  }
+  if(s.name==='Berserker Storm'){
+    r.visual.rotation.y=p*Math.PI*4.5;r.leftArm.rotation.z=1.3;r.rightArm.rotation.z=-1.3;
+    if(!s.hit1&&p>.32){s.hit1=true;aoeHit(3.5,22,{cc:.75,ccType:'FLOAT'});}
+    if(!s.hit2&&p>.72){s.hit2=true;aoeHit(3.8,28,{cc:1.15,ccType:'DOWN'});impact(player.group.position,0xd5b25f,1.2);}
+  }
+  if(s.name==='Berserker Lord'){
+    r.pelvis.rotation.x=.3*Math.sin(Math.PI*p);r.leftArm.rotation.x=-2.0*Math.sin(Math.PI*p);r.rightArm.rotation.x=-2.0*Math.sin(Math.PI*p);
+    if(s.t>=s.nextHit&&s.hits<3){s.hits++;s.nextHit+=.28;aoeHit(3.6,s.hits===3?38:22,{cc:s.hits===3?1.2:0,ccType:'DOWN',heal:75});impact(player.group.position,0xd89b54,.8);}
+  }
   if(s.name==='Axe Strike'){
     r.rightArm.rotation.x=lerp(-1.1,1.15,Math.sin(Math.PI*p));r.rightFore.rotation.x=-.35;
     if(!s.hit&&p>.48){s.hit=true;hitNearest(2.45,9,{cc:0});slashFx(player.group.position,player.group.rotation.y);}
@@ -406,7 +581,7 @@ function updateSkill(dt){
 
   if(s.t>=s.duration){
     if(s.name==='Smack Down'&&s.victim)s.victim.grabbedBy=null;
-    if(s.name==='Predatory Hunt')player.group.position.y=0;
+    if(s.name==='Predatory Hunt'){player.group.position.y=0;if(s.hop>=3)player.predatoryFollow=1.0;}
     if(s.name==='Beastly Wind Slash')player.fg=false;
     player.skill=null;resetRig(player);
     if(ui.currentSkill)ui.currentSkill.textContent='—';
@@ -444,10 +619,10 @@ function aiUpdate(a,dt){
 
 function timers(a,dt){
   a.cc=Math.max(0,a.cc-dt);a.invuln=Math.max(0,a.invuln-dt);a.sa=Math.max(0,a.sa-dt);a.attackCd=Math.max(0,a.attackCd-dt);a.dodgeCd=Math.max(0,a.dodgeCd-dt);
-  if(a.respawn>0){a.respawn-=dt;if(a.respawn<=0)respawnActor(a);}
+  if(a.respawn>0){a.respawn-=dt;if(a.respawn<=0)respawnActor(a);}buffTick(a,dt);if(a.statusTimer>0){a.statusTimer-=dt;if(a.statusTimer<=0)a.status='NORMAL';}if(!a.isPlayer){a.rig.visual.rotation.z=(a.status==='DOWN'||a.status==='BOUND')?-1.15:a.status==='FLOAT'?.25:0;}
   if(a.fg&&a.attackCd<=0)a.fg=false;
   if(a.isPlayer){
-    a.stamina=Math.min(a.maxStamina,a.stamina+72*dt);a.rage=Math.max(0,a.rage-dt);a.lavaChain=Math.max(0,a.lavaChain-dt);
+    a.stamina=Math.min(a.maxStamina,a.stamina+72*dt);a.rage=Math.max(0,a.rage-dt);a.lavaChain=Math.max(0,a.lavaChain-dt);a.predatoryFollow=Math.max(0,a.predatoryFollow-dt);
     for(const k of Object.keys(a.cds))a.cds[k]=Math.max(0,a.cds[k]-dt);
     if(a.rage>0){a.healTick-=dt;if(a.healTick<=0){a.healTick=5;a.hp=Math.min(a.maxHp,a.hp+18);}}
     setProtectionVisual(a);
@@ -486,7 +661,7 @@ function uiUpdate(){
   const st=clamp(player.stamina/player.maxStamina,0,1);if(ui.staminaFill)ui.staminaFill.style.width=(st*100)+'%';if(ui.staminaText)ui.staminaText.textContent='STAMINA '+Math.ceil(player.stamina)+' / '+player.maxStamina;
   if(ui.rageText)ui.rageText.textContent=player.rage>0?'BESTIAL RAGE: '+player.rage.toFixed(1)+'s':'BESTIAL RAGE: OFF';
   ui.protection.textContent=player.cc>0?'CC':player.invuln>0?'IFRAME':player.sa>0?'SA':player.fg?'FG':'NONE';
-  ui.metrics.textContent='Hits '+metrics.hits+'/'+metrics.attempts+' ・ CC '+metrics.cc+' ・ Grab '+metrics.grabs+' ・ Deaths '+metrics.deaths;
+  ui.metrics.textContent='Hits '+metrics.hits+'/'+metrics.attempts+' ・ CC '+metrics.cc+' ・ Grab '+metrics.grabs+' ・ Deaths '+metrics.deaths;if(ui.statLine)ui.statLine.textContent='AP '+Math.round(player.stats.AP)+' ・ DR '+Math.round(player.stats.DR)+' ・ AS '+Math.round(player.stats.AS)+'% ・ MS '+Math.round(player.stats.MS)+'% ・ CRIT +'+Math.round(player.stats.CRIT)+'%';renderBuffs();
   for(const n of Object.keys(player.cds)){const el=document.getElementById('cd-'+n);if(!el)continue;const v=player.cds[n];el.textContent=v>0?v.toFixed(1)+'s':'READY';el.parentElement.classList.toggle('cooldown',v>0);el.parentElement.classList.toggle('rage',n==='rage'&&player.rage>0);}
 }
 
@@ -501,7 +676,7 @@ function loop(){
   if(started&&player){
     timers(player,dt);playerUpdate(dt,time);
     for(const a of [...bots,...allies]){timers(a,dt);aiUpdate(a,dt);}
-    laUpdate(dt);fxUpdate(dt);cameraUpdate(dt);uiUpdate();
+    laUpdate(dt);fxUpdate(dt);cameraUpdate(dt);uiUpdate();comboTick();updateActorLabels();
   }
   renderer.render(scene,camera);requestAnimationFrame(loop);
 }
@@ -512,7 +687,7 @@ window.addEventListener('keydown',e=>{
   if(e.code==='Space'&&(e.shiftKey||key.ShiftLeft||key.ShiftRight)){e.preventDefault();useLava();return;}
   if(e.code==='KeyE'){useGrab();return;}
   if(e.code==='KeyF'&&key.KeyS){usePredatory();return;}
-  if(e.code==='KeyC'){useRage();return;}
+  if(e.code==='KeyC'){useRage();return;}if(e.code==='KeyX'&&(e.shiftKey||key.ShiftLeft||key.ShiftRight)){useEnh56();return;}if(e.code==='KeyZ'&&(e.shiftKey||key.ShiftLeft||key.ShiftRight)){useEnh57();return;}if(e.code==='Digit3'){useEnh58();return;}
 });
 window.addEventListener('keyup',e=>{key[e.code]=false;});
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
@@ -520,7 +695,7 @@ canvas.addEventListener('mousedown',e=>{
   if(!started)return;
   if(document.pointerLockElement!==canvas){canvas.requestPointerLock?.();return;}
   if(e.button===0)mouseLeft=true;if(e.button===2)mouseRight=true;
-  if(mouseLeft&&mouseRight){useThunder();return;}
+  if(e.button===0&&player?.predatoryFollow>0){useFallingBoulder();return;}if(e.button===0&&state.enh58==='berserkerStorm'&&player?.skill&&['Blast Bash','Bestial Rage','Bestial Destroyer'].includes(player.skill.name)){useBerserkerStorm();return;}if(mouseLeft&&mouseRight){useThunder();return;}
   if(e.button===2&&key.KeyS){useBeastly();return;}
   if(e.button===2&&(key.KeyA||key.KeyD)){useShake();return;}
   if(e.button===0&&key.KeyS){useFrenzy();return;}
