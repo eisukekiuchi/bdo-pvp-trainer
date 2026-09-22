@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PvP Training Simulator — 伝承GA</title>
+  <title>PvP練習シミュレーター — 伝承GA</title>
   <link rel="stylesheet" href="./style.css" />
   <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}</script>
 </head>
@@ -14,34 +14,34 @@
 
   <div id="topbar">
     <div>
-      <div class="brand">PvP TRAINING SIMULATOR <span>SUCCESSION GA v0.3</span></div>
-      <div class="sub">Combo Judgment ・ CC State ・ Buff/Debuff ・ Skill Enhancement</div>
+      <div class="brand">PvP練習シミュレーター <span>伝承GA v0.4</span></div>
+      <div class="sub">コンボ判定 ・ CC状態 ・ バフ/デバフ ・ スキル練成</div>
     </div>
     <button id="settingsBtn" class="ghost">環境設定</button>
   </div>
 
   <div id="statusPanel" class="panel">
-    <div class="row"><b id="modeLabel">1v1</b><span id="aiLabel">AI: Normal</span></div>
+    <div class="row"><b id="modeLabel">1対1</b><span id="aiLabel">AI：標準</span></div>
     <div class="hpbar"><div id="hpFill"></div></div>
     <div class="row small"><span id="hpText">HP 5000 / 5000</span><span id="protection">NONE</span></div>
     <div class="stambar"><div id="staminaFill"></div></div>
-    <div class="row small"><span id="staminaText">STAMINA 1000 / 1000</span><span id="rageText">BESTIAL: OFF</span></div>
-    <div id="statLine" class="statLine">AP 300 ・ DR 400 ・ AS 100% ・ MS 100% ・ CRIT +0%</div>
-    <div class="metrics" id="metrics">Hits 0/0 ・ CC 0 ・ Grab 0 ・ Deaths 0</div>
+    <div class="row small"><span id="staminaText">持久力 1000 / 1000</span><span id="rageText">野獣状態：OFF</span></div>
+    <div id="statLine" class="statLine">攻撃力 300 ・ 防御力 400 ・ 攻撃速度 100% ・ 移動速度 100% ・ クリ率 +0%</div>
+    <div class="metrics" id="metrics">命中 0/0 ・ CC 0 ・ キャッチ 0 ・ 死亡 0</div>
     <div id="eventText">開始してください</div>
     <div id="currentSkillText" class="currentSkill">—</div>
   </div>
 
   <div id="buffPanel" class="panel compactPanel">
-    <b>BUFF / DEBUFF</b>
+    <b>バフ / デバフ</b>
     <div id="buffList" class="chipList"><span class="muted">なし</span></div>
   </div>
 
   <div id="comboPanel" class="panel comboPanel">
-    <div class="row"><b>COMBO DRILL</b><span id="comboResult">WAIT</span></div>
-    <div id="comboName" class="comboName">Free Practice</div>
+    <div class="row comboHead"><b>コンボ練習</b><span id="comboResult">待機</span></div>
+    <div id="comboName" class="comboName">自由練習</div>
     <div id="comboSteps" class="comboSteps"></div>
-    <div id="comboHint" class="small">設定画面で練習コンボを選択</div>
+    <div id="comboHint" class="comboHint">設定画面で練習コンボを選択</div><div id="inputFlash" class="inputFlash"></div>
   </div>
 
   <div id="controls" class="panel">
@@ -55,45 +55,45 @@
   </div>
 
   <div id="skillBar">
-    <div class="skill" data-skill="lava"><b>Shift+Space</b><span>溶岩貫通</span><em id="cd-lava">READY</em></div>
-    <div class="skill" data-skill="shake"><b>A/D+RMB</b><span>振り払い</span><em id="cd-shake">READY</em></div>
-    <div class="skill" data-skill="grab"><b>E</b><span>チョップ＆スロー</span><em id="cd-grab">READY</em></div>
-    <div class="skill" data-skill="predatory"><b>S+F</b><span>プレデターハンティング</span><em id="cd-predatory">READY</em></div>
-    <div class="skill" data-skill="beastly"><b>S+RMB</b><span>残酷な風斬</span><em id="cd-beastly">READY</em></div>
-    <div class="skill" data-skill="frenzy"><b>S+LMB</b><span>バーサークデストロイヤー</span><em id="cd-frenzy">READY</em></div>
-    <div class="skill" data-skill="thunder"><b>LMB+RMB</b><span>ブラストライトニング</span><em id="cd-thunder">READY</em></div>
-    <div class="skill" data-skill="rage"><b>C</b><span>止められない野獣</span><em id="cd-rage">READY</em></div>
+    <div class="skill" data-skill="lava"><b>Shift+Space</b><span>溶岩貫通</span><em id="cd-lava">使用可</em></div>
+    <div class="skill" data-skill="shake"><b>A/D+RMB</b><span>振り払い</span><em id="cd-shake">使用可</em></div>
+    <div class="skill" data-skill="grab"><b>E</b><span>チョップ＆スロー</span><em id="cd-grab">使用可</em></div>
+    <div class="skill" data-skill="predatory"><b>S+F</b><span>プレデターハンティング</span><em id="cd-predatory">使用可</em></div>
+    <div class="skill" data-skill="beastly"><b>S+RMB</b><span>残酷な風斬</span><em id="cd-beastly">使用可</em></div>
+    <div class="skill" data-skill="frenzy"><b>S+LMB</b><span>バーサークデストロイヤー</span><em id="cd-frenzy">使用可</em></div>
+    <div class="skill" data-skill="thunder"><b>LMB+RMB</b><span>ブラストライトニング</span><em id="cd-thunder">使用可</em></div>
+    <div class="skill" data-skill="rage"><b>C</b><span>止められない野獣</span><em id="cd-rage">使用可</em></div>
   </div>
 
-  <div id="laBanner" hidden>LAST ATTACK</div>
+  <div id="laBanner" hidden>ラストアタック</div>
   <div id="crosshair">＋</div>
 
   <div id="menu" class="menu show">
     <div class="menuCard">
-      <h1>PvP Training Simulator — 伝承GA</h1>
+      <h1>PvP練習シミュレーター — 伝承GA</h1>
       <p>コンボの順番・入力成功・CC状態・保護・バフ/デバフまで判定するトレーニング版。</p>
 
       <div class="modeGrid">
-        <button class="mode active" data-mode="duel"><strong>1v1</strong><span>コンボ・キャッチ確認</span></button>
-        <button class="mode" data-mode="many"><strong>1vX</strong><span>複数相手・生存判断</span></button>
-        <button class="mode" data-mode="la"><strong>LA</strong><span>集団戦・押し引き</span></button>
+        <button class="mode active" data-mode="duel"><strong>1対1</strong><span>コンボ・キャッチ確認</span></button>
+        <button class="mode" data-mode="many"><strong>1対複数</strong><span>複数相手・生存判断</span></button>
+        <button class="mode" data-mode="la"><strong>ラストアタック</strong><span>集団戦・押し引き</span></button>
       </div>
 
-      <div class="sectionTitle">TRAINING</div>
+      <div class="sectionTitle">練習設定</div>
       <div class="settingsGrid">
         <label>コンボ<select id="comboSelect">
-          <option value="free">Free Practice</option>
+          <option value="free">自由練習</option>
           <option value="catch">接近 → 横移動 → 再接近 → キャッチ → 追撃</option>
-          <option value="predator">Predatory x3 → Falling Boulder</option>
-          <option value="enhance">練成3段ルート</option>
+          <option value="predator">プレデターハンティング連続 → フォーリングボルダー</option>
+          <option value="enhance">スキル練成3段ルート</option>
         </select></label>
-        <label>AI<select id="difficulty"><option>Easy</option><option selected>Normal</option><option>Hard</option></select></label>
+        <label>AI<select id="difficulty"><option value="Easy">簡単</option><option value="Normal" selected>標準</option><option value="Hard">上級</option></select></label>
         <label>環境<select id="environment"><option value="arena">闘技場</option><option value="field">平地</option><option value="node">拠点戦風</option></select></label>
         <label>敵人数<input id="enemyCount" type="range" min="2" max="16" value="4"><span id="enemyCountVal">4</span></label>
-        <label>LA味方人数<input id="allyCount" type="range" min="3" max="24" value="8"><span id="allyCountVal">8</span></label>
+        <label>ラストアタック味方人数<input id="allyCount" type="range" min="3" max="24" value="8"><span id="allyCountVal">8</span></label>
       </div>
 
-      <div class="sectionTitle">SKILL ENHANCEMENT — 各段1つ / 合計3つ</div>
+      <div class="sectionTitle">スキル練成 — 各段1つ / 合計3つ</div>
       <div class="enhanceGrid">
         <fieldset><legend>Lv56</legend>
           <label><input type="radio" name="enh56" value="blastBash" checked> ブラストバッシュ</label>
@@ -109,15 +109,15 @@
         </fieldset>
       </div>
 
-      <div class="sectionTitle">BASE TRAINING STATS</div>
+      <div class="sectionTitle">基礎練習ステータス</div>
       <div class="statInputs">
-        <label>HP <input id="baseHP" type="number" min="100" max="20000" value="5000"></label>
-        <label>AP <input id="baseAP" type="number" min="1" max="1000" value="300"></label>
-        <label>DR <input id="baseDR" type="number" min="0" max="1000" value="400"></label>
+        <label>最大HP <input id="baseHP" type="number" min="100" max="20000" value="5000"></label>
+        <label>攻撃力 <input id="baseAP" type="number" min="1" max="1000" value="300"></label>
+        <label>防御力 <input id="baseDR" type="number" min="0" max="1000" value="400"></label>
       </div>
 
       <button id="startBtn" class="primary">訓練開始</button>
-      <p class="tiny">※ スキル数値は提供された日本語クライアント画面を基準に反映。装備依存の最終ダメージはトレーニング用換算。</p>
+      <p class="tiny">※ 提供された日本語クライアント画面を基準に、入力・CC・保護・バフ/デバフ・練成を練習用に再現しています。</p>
     </div>
   </div>
 </div>
