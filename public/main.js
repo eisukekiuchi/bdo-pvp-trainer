@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
@@ -29,7 +30,8 @@ const ui={
   staminaFill:document.getElementById('staminaFill'),staminaText:document.getElementById('staminaText'),rageText:document.getElementById('rageText'),
   currentSkill:document.getElementById('currentSkillText'),
   statLine:document.getElementById('statLine'),buffList:document.getElementById('buffList'),comboPanel:document.getElementById('comboPanel'),comboResult:document.getElementById('comboResult'),comboName:document.getElementById('comboName'),comboSteps:document.getElementById('comboSteps'),comboHint:document.getElementById('comboHint'),
-  comboSelect:document.getElementById('comboSelect'),baseHP:document.getElementById('baseHP'),baseAP:document.getElementById('baseAP'),baseDR:document.getElementById('baseDR'),worldLabels:document.getElementById('worldLabels'),inputFlash:document.getElementById('inputFlash')
+  comboSelect:document.getElementById('comboSelect'),baseHP:document.getElementById('baseHP'),baseAP:document.getElementById('baseAP'),baseDR:document.getElementById('baseDR'),worldLabels:document.getElementById('worldLabels'),inputFlash:document.getElementById('inputFlash'),
+  observeBtn:document.getElementById('observeBtn'),observePanel:document.getElementById('observePanel'),observeClose:document.getElementById('observeClose'),observeVideo:document.getElementById('observeVideo'),captureStart:document.getElementById('captureStart'),captureStop:document.getElementById('captureStop'),captureStatus:document.getElementById('captureStatus'),motionStatus:document.getElementById('motionStatus'),bridgeStatus:document.getElementById('bridgeStatus'),comboRecordName:document.getElementById('comboRecordName'),comboRecordStart:document.getElementById('comboRecordStart'),comboRecordStop:document.getElementById('comboRecordStop'),recordedInputs:document.getElementById('recordedInputs'),learnStats:document.getElementById('learnStats')
 };
 
 let selectedMode='duel';
@@ -52,6 +54,11 @@ const SKILL_NAME={
 const combo={mode:'free',name:'自由練習',steps:[],index:0,result:'WAIT',lastAt:0,window:3.0,history:[],predatoryCount:0};
 
 const clock=new THREE.Clock();
+const gltfLoader=new GLTFLoader();
+let observation={stream:null,active:false,lastFrame:null,lastSample:0,motionSegments:0,inputCount:0,canvas:null,ctx:null};
+let comboRecording=false,recordedCombo=[];
+let realisticReady=false;
+
 
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function lerp(a,b,t){return a+(b-a)*t;}
