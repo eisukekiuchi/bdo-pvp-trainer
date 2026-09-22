@@ -62,3 +62,10 @@
 .observeNote{font-size:10px;line-height:1.5;color:#8f9aa5;margin:10px 0 0}
 .realModelBadge{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);font-size:10px;padding:4px 7px;border-radius:5px;background:rgba(6,10,14,.72);border:1px solid #40505e;color:#bad1e4;pointer-events:none}
 @media(max-width:900px){.observeBody{grid-template-columns:1fr}.observePanel{max-height:80vh;overflow:auto}}
+
+.ccLine{margin-top:6px;font-size:12px;font-weight:800;color:#ffd37d}
+.videoWrap{position:relative;width:100%;aspect-ratio:16/9;background:#05070a;border:1px solid #2e3741;border-radius:8px;overflow:hidden}
+.videoWrap #observeVideo{width:100%;height:100%;object-fit:contain;border:0;border-radius:0}
+#roiCanvas{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;pointer-events:none}
+#roiCanvas.selecting{pointer-events:auto}
+.ocrToken{display:inline-block;margin:2px 4px 2px 0;padding:3px 6px;border-radius:5px;background:#172331;border:1px solid #3c566f;color:#b9dfff;font-weight:800}
