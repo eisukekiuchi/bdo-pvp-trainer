@@ -146,6 +146,59 @@ function makeActor(team,name,pos,isPlayer=false){
 
 let player=null,bots=[],allies=[];
 
+function findBone(root,needle){
+  let found=null;const n=needle.toLowerCase();
+  root.traverse(o=>{if(!found&&o.isBone&&o.name.toLowerCase().includes(n))found=o;});
+  return found;
+}
+function attachRealisticModel(a){
+  if(!a||!a.isPlayer)return;
+  gltfLoader.load('https://threejs.org/examples/models/gltf/Soldier.glb',gltf=>{
+    if(!a.group.parent)return;
+    const model=gltf.scene;model.scale.setScalar(1.32);model.position.y=0;model.rotation.y=Math.PI;
+    model.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}if(o.isBone)o.userData.baseQuat=o.quaternion.clone();});
+    a.group.add(model);a.model=model;a.rig.visual.visible=false;
+    a.mixer=new THREE.AnimationMixer(model);a.actions={};
+    for(const clip of gltf.animations){a.actions[clip.name.toLowerCase()]=a.mixer.clipAction(clip);}
+    a.currentAction=null;a.modelBones={
+      spine:findBone(model,'spine'),leftArm:findBone(model,'leftarm'),rightArm:findBone(model,'rightarm'),
+      leftFore:findBone(model,'leftforearm'),rightFore:findBone(model,'rightforearm'),
+      leftLeg:findBone(model,'leftupleg'),rightLeg:findBone(model,'rightupleg')
+    };
+    setModelAction(a,'idle');realisticReady=true;
+    ui.event.textContent='リアル人型モデルを読み込みました';
+  },undefined,()=>{realisticReady=false;ui.event.textContent='人型モデル読込失敗：簡易モデルで継続';});
+}
+function setModelAction(a,name){
+  if(!a?.actions)return;
+  const target=a.actions[name]||a.actions[Object.keys(a.actions).find(k=>k.includes(name))];
+  if(!target||target===a.currentAction)return;
+  if(a.currentAction)a.currentAction.fadeOut(.18);
+  target.reset().fadeIn(.18).play();a.currentAction=target;
+}
+function resetModelPose(a){
+  if(!a?.model)return;
+  a.model.rotation.set(0,Math.PI,0);a.model.position.y=0;a.model.scale.setScalar(a.rage>0?1.4:1.32);
+  for(const b of Object.values(a.modelBones||{})){if(b?.userData.baseQuat)b.quaternion.copy(b.userData.baseQuat);}
+}
+function poseRealisticSkill(a,s,p){
+  if(!a?.model)return;
+  resetModelPose(a);const b=a.modelBones||{},wave=Math.sin(Math.PI*p);
+  const rot=(bone,x=0,y=0,z=0)=>{if(bone){bone.rotation.x+=x;bone.rotation.y+=y;bone.rotation.z+=z;}};
+  if(s.name==='Lava Piercer'){a.model.rotation.x=-.32;rot(b.leftArm,1.0);rot(b.rightArm,1.0);rot(b.spine,-.18);}
+  if(s.name==='Shake Off'){a.model.rotation.z=(s.side||1)*.25*wave;rot(b.leftArm,-.55);rot(b.rightArm,.45);}
+  if(s.name==='Smack Down'){rot(b.leftArm,-1.45*wave,0,-.25);rot(b.rightArm,-1.45*wave,0,.25);rot(b.spine,.35*wave);}
+  if(s.name==='Predatory Hunt'){a.model.rotation.x=-.22*wave;rot(b.leftLeg,-.75*wave);rot(b.rightLeg,-.75*wave);rot(b.leftArm,-1.0*wave);rot(b.rightArm,-1.0*wave);}
+  if(['Beastly Wind Slash','Raging Thunder','Blast Rage','Bestial Rage','Berserker Storm'].includes(s.name)){a.model.rotation.y=Math.PI+p*Math.PI*(s.name==='Raging Thunder'?7:4);rot(b.leftArm,0,0,1.2);rot(b.rightArm,0,0,-1.2);}
+  if(['Frenzied Destroyer','Falling Boulder','Bestial Destroyer','Berserker Lord'].includes(s.name)){const swing=p<.5?Math.sin(p*Math.PI):Math.sin(p*Math.PI);rot(b.leftArm,-2.0*swing);rot(b.rightArm,-2.0*swing);rot(b.spine,.25*p);}
+  if(s.name==='Unstoppable Beast'){rot(b.leftArm,0,0,1.25*wave);rot(b.rightArm,0,0,-1.25*wave);a.model.scale.setScalar(1.32+.12*wave);}
+}
+function updateRealisticModel(a,dt){
+  if(!a?.model)return;
+  if(a.skill){if(a.currentAction){a.currentAction.stop();a.currentAction=null;}const p=clamp(a.skill.t/a.skill.duration,0,1);poseRealisticSkill(a,a.skill,p);}
+  else{resetModelPose(a);setModelAction(a,a.moving?'run':'idle');a.mixer?.update(dt);}
+}
+
 function nearestEnemy(a){
   let best=null,d=Infinity;
   const pool=a.team==='blue'?bots:[player,...allies].filter(Boolean);
@@ -157,7 +210,7 @@ function spawnScenario(){
   clearGroup(actors);clearGroup(fx);bots=[];allies=[];Object.assign(metrics,{attempts:0,hits:0,cc:0,grabs:0,deaths:0,defenses:0});
   state.mode=selectedMode;state.difficulty=ui.difficulty.value;state.environment=ui.environment.value;state.laTimer=8;state.laActive=false;ui.la.hidden=true;readEnhancements();buildCombo();if(ui.worldLabels)ui.worldLabels.innerHTML='';
   makeArena(state.environment);
-  player=makeActor('blue','伝承GA',new THREE.Vector3(0,0,-8),true);player.statsBase.HP=Number(ui.baseHP?.value||5000);player.statsBase.AP=Number(ui.baseAP?.value||300);player.statsBase.DR=Number(ui.baseDR?.value||400);refreshStats(player);player.hp=player.maxHp;
+  player=makeActor('blue','伝承GA',new THREE.Vector3(0,0,-8),true);attachRealisticModel(player);player.statsBase.HP=Number(ui.baseHP?.value||5000);player.statsBase.AP=Number(ui.baseAP?.value||300);player.statsBase.DR=Number(ui.baseDR?.value||400);refreshStats(player);player.hp=player.maxHp;
   if(state.mode==='duel')bots.push(makeActor('red','敵1',new THREE.Vector3(0,0,5)));
   if(state.mode==='many'){
     const n=Number(ui.enemyCount.value);
@@ -728,7 +781,7 @@ function loop(){
   const dt=Math.min(.033,clock.getDelta()),time=performance.now()/1000;
   resize();
   if(started&&player){
-    timers(player,dt);playerUpdate(dt,time);
+    timers(player,dt);playerUpdate(dt,time);updateRealisticModel(player,dt);
     for(const a of [...bots,...allies]){timers(a,dt);aiUpdate(a,dt);}
     laUpdate(dt);fxUpdate(dt);cameraUpdate(dt);uiUpdate();comboTick();updateActorLabels();
   }
@@ -760,6 +813,6 @@ document.addEventListener('mousemove',e=>{if(document.pointerLockElement!==canva
 ui.start.addEventListener('click',()=>{spawnScenario();ui.menu.classList.remove('show');setTimeout(()=>canvas.requestPointerLock?.(),80);});
 
 makeArena('arena');
-player=makeActor('blue','Succession Berserker',new THREE.Vector3(0,0,-8),true);
+player=makeActor('blue','伝承GA',new THREE.Vector3(0,0,-8),true);attachRealisticModel(player);
 bots=[makeActor('red','Enemy 1',new THREE.Vector3(0,0,5))];
 camera.position.set(0,5,-13);camera.lookAt(0,1,0);uiUpdate();loop();
