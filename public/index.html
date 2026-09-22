@@ -16,7 +16,7 @@
     <div id="topbar">
       <div>
         <div class="brand">PvP TRAINING SIMULATOR <span>WEB v0.1</span></div>
-        <div class="sub">1v1 ・ 対複数 ・ LA再現</div>
+        <div class="sub">伝承GA Prototype ・ 1v1 / 1vX / LA</div>
       </div>
       <button id="settingsBtn" class="ghost">環境設定</button>
     </div>
@@ -24,16 +24,31 @@
     <div id="statusPanel" class="panel">
       <div class="row"><b id="modeLabel">1v1</b><span id="aiLabel">AI: Normal</span></div>
       <div class="hpbar"><div id="hpFill"></div></div>
-      <div class="row small"><span id="hpText">HP 100 / 100</span><span id="protection">NONE</span></div>
+      <div class="row small"><span id="hpText">HP 180 / 180</span><span id="protection">NONE</span></div>
+      <div class="stambar"><div id="staminaFill"></div></div>
+      <div class="row small"><span id="staminaText">STAMINA 1000 / 1000</span><span id="rageText">BESTIAL RAGE: OFF</span></div>
       <div class="metrics" id="metrics">Hits 0/0 ・ CC 0 ・ Grab 0 ・ Deaths 0</div>
       <div id="eventText">開始してください</div>
     </div>
 
     <div id="controls" class="panel">
-      <b>操作</b>
-      <div>WASD 移動 / マウス 視点</div>
-      <div>LMB 通常攻撃 / Q FG / E SA / F CC / R Grab / Space iframe</div>
-      <div class="hint">画面クリックでマウス操作固定 ・ Escで解除</div>
+      <b>伝承GA 操作（試作）</b>
+      <div>WASD 移動 / マウス 視点 / LMB 通常斧</div>
+      <div><b>Shift+Space</b> Lava Piercer　<b>A/D+RMB</b> Shake Off　<b>E</b> Smack Down</div>
+      <div><b>S+F</b> Predatory Hunt　<b>S+RMB</b> Beastly Wind Slash　<b>S+LMB</b> Frenzied Destroyer</div>
+      <div><b>LMB+RMB</b> Raging Thunder　<b>C</b> Unstoppable Beast</div>
+      <div class="hint">※ 現在は「伝承GAの操作感・保護・移動・キャッチ」を優先した近似実装</div>
+    </div>
+
+    <div id="skillBar">
+      <div class="skill" data-skill="lava"><b>Shift+Space</b><span>Lava Piercer</span><em id="cd-lava">READY</em></div>
+      <div class="skill" data-skill="shake"><b>A/D+RMB</b><span>Shake Off</span><em id="cd-shake">READY</em></div>
+      <div class="skill" data-skill="grab"><b>E</b><span>Smack Down</span><em id="cd-grab">READY</em></div>
+      <div class="skill" data-skill="predatory"><b>S+F</b><span>Predatory Hunt</span><em id="cd-predatory">READY</em></div>
+      <div class="skill" data-skill="beastly"><b>S+RMB</b><span>Beastly Wind Slash</span><em id="cd-beastly">READY</em></div>
+      <div class="skill" data-skill="frenzy"><b>S+LMB</b><span>Frenzied Destroyer</span><em id="cd-frenzy">READY</em></div>
+      <div class="skill" data-skill="thunder"><b>LMB+RMB</b><span>Raging Thunder</span><em id="cd-thunder">READY</em></div>
+      <div class="skill" data-skill="rage"><b>C</b><span>Unstoppable Beast</span><em id="cd-rage">READY</em></div>
     </div>
 
     <div id="laBanner" hidden>LAST ATTACK</div>
@@ -41,8 +56,8 @@
 
     <div id="menu" class="menu show">
       <div class="menuCard">
-        <h1>PvP Training Simulator</h1>
-        <p>黒い砂漠系PvPの「判断・反応・位置取り」を反復練習するための3D試作版。</p>
+        <h1>PvP Training Simulator — 伝承GA</h1>
+        <p>まず伝承GAの「突進・横回避・キャッチ・SA・FG連携・獣化」を再現する3D試作版。</p>
 
         <div class="modeGrid">
           <button class="mode active" data-mode="duel"><strong>1v1</strong><span>対人基礎・反応練習</span></button>
