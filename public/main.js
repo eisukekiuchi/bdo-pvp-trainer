@@ -31,7 +31,7 @@ const ui={
   currentSkill:document.getElementById('currentSkillText'),
   statLine:document.getElementById('statLine'),buffList:document.getElementById('buffList'),comboPanel:document.getElementById('comboPanel'),comboResult:document.getElementById('comboResult'),comboName:document.getElementById('comboName'),comboSteps:document.getElementById('comboSteps'),comboHint:document.getElementById('comboHint'),
   comboSelect:document.getElementById('comboSelect'),baseHP:document.getElementById('baseHP'),baseAP:document.getElementById('baseAP'),baseDR:document.getElementById('baseDR'),worldLabels:document.getElementById('worldLabels'),inputFlash:document.getElementById('inputFlash'),
-  observeBtn:document.getElementById('observeBtn'),observePanel:document.getElementById('observePanel'),observeClose:document.getElementById('observeClose'),observeVideo:document.getElementById('observeVideo'),captureStart:document.getElementById('captureStart'),captureStop:document.getElementById('captureStop'),captureStatus:document.getElementById('captureStatus'),motionStatus:document.getElementById('motionStatus'),bridgeStatus:document.getElementById('bridgeStatus'),bridgeCode:document.getElementById('bridgeCode'),comboRecordName:document.getElementById('comboRecordName'),comboRecordStart:document.getElementById('comboRecordStart'),comboRecordStop:document.getElementById('comboRecordStop'),recordedInputs:document.getElementById('recordedInputs'),learnStats:document.getElementById('learnStats')
+  observeBtn:document.getElementById('observeBtn'),observePanel:document.getElementById('observePanel'),observeClose:document.getElementById('observeClose'),observeVideo:document.getElementById('observeVideo'),captureStart:document.getElementById('captureStart'),captureStop:document.getElementById('captureStop'),captureStatus:document.getElementById('captureStatus'),motionStatus:document.getElementById('motionStatus'),ocrStatus:document.getElementById('ocrStatus'),roiCanvas:document.getElementById('roiCanvas'),roiSelect:document.getElementById('roiSelect'),ocrToggle:document.getElementById('ocrToggle'),comboRecordName:document.getElementById('comboRecordName'),comboRecordStart:document.getElementById('comboRecordStart'),comboRecordStop:document.getElementById('comboRecordStop'),recordedInputs:document.getElementById('recordedInputs'),learnStats:document.getElementById('learnStats'),targetCcLine:document.getElementById('targetCcLine')
 };
 
 let selectedMode='duel';
@@ -39,7 +39,7 @@ ui.modes.forEach(b=>b.addEventListener('click',()=>{ui.modes.forEach(x=>x.classL
 ui.enemyCount.addEventListener('input',()=>ui.enemyVal.textContent=ui.enemyCount.value);
 ui.allyCount.addEventListener('input',()=>ui.allyVal.textContent=ui.allyCount.value);
 ui.settings.addEventListener('click',()=>{ui.menu.classList.add('show');document.exitPointerLock?.();});
-ui.observeBtn?.addEventListener('click',()=>{ui.observePanel.classList.add('show');document.exitPointerLock?.();ensureBridgeCode();connectInputBridge();});
+ui.observeBtn?.addEventListener('click',()=>{ui.observePanel.classList.add('show');document.exitPointerLock?.();});
 ui.observeClose?.addEventListener('click',()=>ui.observePanel.classList.remove('show'));
 ui.captureStart?.addEventListener('click',startObservation);ui.captureStop?.addEventListener('click',stopObservation);
 ui.comboRecordStart?.addEventListener('click',startComboRecording);ui.comboRecordStop?.addEventListener('click',stopComboRecording);
@@ -59,7 +59,7 @@ const combo={mode:'free',name:'自由練習',steps:[],index:0,result:'WAIT',last
 
 const clock=new THREE.Clock();
 const gltfLoader=new GLTFLoader();
-let observation={stream:null,active:false,lastFrame:null,lastSample:0,motionSegments:0,inputCount:0,canvas:null,ctx:null};
+let observation={stream:null,active:false,lastFrame:null,lastSample:0,motionSegments:0,inputCount:0,canvas:null,ctx:null,roi:null,roiSelecting:false,ocrActive:false,ocrBusy:false,lastOcrAt:0,lastOcrText:'',lastDetected:new Set(),ocrWorker:null,motionTrace:[]};
 let comboRecording=false,recordedCombo=[];
 let realisticReady=false;
 
@@ -143,7 +143,7 @@ function makeActor(team,name,pos,isPlayer=false){
     speed:isPlayer?7.1:4.45,cc:0,invuln:0,sa:0,fg:false,alive:true,respawn:0,decision:Math.random()*.5,target:null,
     attackCd:0,dodgeCd:0,moving:false,moveAmount:0,grabbedBy:null,
     cds:{lava:0,shake:0,grab:0,predatory:0,falling:0,beastly:0,frenzy:0,thunder:0,rage:0,enh56:0,enh57:0,enh58:0},
-    rage:0,healTick:5,lavaChain:0,predatoryFollow:0,skill:null,lastSkill:'',status:'NORMAL',statusTimer:0,effects:{},statusEl:null,
+    rage:0,healTick:5,lavaChain:0,predatoryFollow:0,skill:null,lastSkill:'',status:'NORMAL',statusTimer:0,effects:{},statusEl:null,ccCount:0,ccResetTimer:0,ccImmuneTimer:0,ccImmuneAfterGrab:false,lastCCType:null,
     statsBase:{HP:isPlayer?5000:4200,AP:isPlayer?300:280,DR:isPlayer?400:360,AS:100,MS:100,CRIT:0},stats:{HP:isPlayer?5000:4200,AP:isPlayer?300:280,DR:isPlayer?400:360,AS:100,MS:100,CRIT:0},baseSpeed:isPlayer?7.1:4.45
   };
 }
@@ -366,11 +366,28 @@ function refreshStats(a){
   a.stats=s;a.speed=a.baseSpeed*(s.MS/100);
   if(a.maxHp!==s.HP){const ratio=a.maxHp?Math.min(1,a.hp/a.maxHp):1;a.maxHp=s.HP;a.hp=Math.min(a.maxHp,Math.max(a.hp,a.maxHp*ratio));}
 }
-function setStatus(a,type,duration){
-  a.status=type;a.statusTimer=Math.max(a.statusTimer||0,duration||0);
-  if(type==='DOWN'||type==='BOUND')a.cc=Math.max(a.cc,duration||1.2);
-  if(type==='FLOAT'||type==='STIFFNESS'||type==='STUN'||type==='GRABBED')a.cc=Math.max(a.cc,duration||.8);
+const CC_VALUE={STIFFNESS:.7,KNOCKBACK:.7,STUN:1,FLOAT:1,BOUND:1,DOWN:1,GRABBED:1,FREEZE:1,DOWN_SMASH:0,AIR_SMASH:0};
+function applyCrowdControl(a,type,duration){
+  const value=CC_VALUE[type]??1;
+  if(value===0){
+    if(type==='DOWN_SMASH'&&(a.status==='DOWN'||a.status==='BOUND')){a.statusTimer=Math.max(a.statusTimer,duration||.7);return true;}
+    if(type==='AIR_SMASH'&&a.status==='FLOAT'){a.statusTimer=Math.max(a.statusTimer,duration||.7);return true;}
+    return false;
+  }
+  if(a.ccImmuneTimer>0)return false;
+  if(a.lastCCType===type&&a.ccResetTimer>0)return false;
+  a.ccCount=Math.round((a.ccCount+value)*10)/10;
+  a.ccResetTimer=5;
+  a.lastCCType=type;
+  a.status=type;a.statusTimer=Math.max(a.statusTimer||0,duration||.8);
+  a.cc=Math.max(a.cc,duration||.8);
+  if(a.ccCount>=2){
+    if(type==='GRABBED')a.ccImmuneAfterGrab=true;
+    else a.ccImmuneTimer=5;
+  }
+  return true;
 }
+function setStatus(a,type,duration){return applyCrowdControl(a,type,duration);}
 function statusClass(a){return String(a.status||'NORMAL').toLowerCase();}
 function statusLabel(a){
   const map={NORMAL:'通常',DOWN:'ダウン',BOUND:'バウンド',FLOAT:'浮かし',GRABBED:'キャッチ中',STIFFNESS:'硬直',STUN:'気絶'};
@@ -379,7 +396,7 @@ function statusLabel(a){
 function createActorLabel(a){
   if(a.isPlayer||!ui.worldLabels)return;
   const el=document.createElement('div');el.className='actorLabel';
-  el.innerHTML='<div class="actorName"></div><div class="actorHp"><i></i></div><span class="actorState normal">通常</span>';
+  el.innerHTML='<div class="actorName"></div><div class="actorHp"><i></i></div><span class="actorState normal">通常</span><div class="actorCc">CC 0.0 / 2.0</div>';
   ui.worldLabels.appendChild(el);a.statusEl=el;
 }
 function updateActorLabels(){
@@ -392,7 +409,7 @@ function updateActorLabels(){
     el.style.display='block';el.style.left=((p.x*.5+.5)*innerWidth)+'px';el.style.top=((-p.y*.5+.5)*innerHeight)+'px';
     el.querySelector('.actorName').textContent=a.name;
     el.querySelector('.actorHp i').style.width=(Math.max(0,a.hp/a.maxHp)*100)+'%';
-    const st=el.querySelector('.actorState');st.textContent=statusLabel(a);st.className='actorState '+statusClass(a);
+    const st=el.querySelector('.actorState');st.textContent=(a.ccImmuneTimer>0?'CC免疫 '+a.ccImmuneTimer.toFixed(1)+'秒':statusLabel(a));st.className='actorState '+statusClass(a);const cc=el.querySelector('.actorCc');if(cc)cc.textContent='CC '+a.ccCount.toFixed(1)+' / 2.0';
   }
 }
 function buffTick(a,dt){
@@ -447,15 +464,92 @@ function setupRecorderForCurrentStream(){
 async function startObservation(){
   try{
     const stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:30,max:60}},audio:false});
+    const track=stream.getVideoTracks()[0];
+    const settings=track.getSettings?.()||{};
+    const label=(track.label||'').toLowerCase();
+    const isGame=/black\s*desert|blackdesert|黒い砂漠/.test(label);
+    const isMonitor=settings.displaySurface==='monitor';
+    if(isGame||isMonitor){
+      stream.getTracks().forEach(t=>t.stop());
+      ui.captureStatus.textContent=isGame?'ゲーム本体は選択不可':'モニター全体は選択不可';
+      ui.motionStatus.textContent='Discord等の画面共有ウィンドウを選んでください';
+      return;
+    }
     observation.stream=stream;observation.active=true;observation.lastFrame=null;observation.lastSample=0;observation.motionTrace=[];observation.motionSegments=0;observation.inputCount=0;observation.inMotion=false;
-    ui.observeVideo.srcObject=stream;ui.captureStatus.textContent='観察中';ui.captureStart.disabled=true;ui.captureStop.disabled=false;
+    ui.observeVideo.srcObject=stream;ui.captureStatus.textContent='画面共有を観察中';ui.captureStart.disabled=true;ui.captureStop.disabled=false;ui.roiSelect.disabled=false;
     const cv=document.createElement('canvas');cv.width=160;cv.height=90;observation.canvas=cv;observation.ctx=cv.getContext('2d',{willReadFrequently:true});
-    stream.getVideoTracks()[0].addEventListener('ended',stopObservation);requestAnimationFrame(sampleObservation);connectInputBridge();updateLearnStats();
+    track.addEventListener('ended',stopObservation);requestAnimationFrame(sampleObservation);updateLearnStats();
   }catch(e){ui.captureStatus.textContent='開始できませんでした';}
 }
 function stopObservation(){
   if(observation.stream)observation.stream.getTracks().forEach(t=>t.stop());observation.stream=null;observation.active=false;
-  if(ui.observeVideo)ui.observeVideo.srcObject=null;if(ui.captureStatus)ui.captureStatus.textContent='停止中';if(ui.captureStart)ui.captureStart.disabled=false;if(ui.captureStop)ui.captureStop.disabled=true;
+  if(ui.observeVideo)ui.observeVideo.srcObject=null;if(ui.captureStatus)ui.captureStatus.textContent='停止中';if(ui.captureStart)ui.captureStart.disabled=false;if(ui.captureStop)ui.captureStop.disabled=true;if(ui.ocrToggle)ui.ocrToggle.disabled=true;observation.ocrActive=false;if(ui.ocrStatus)ui.ocrStatus.textContent='未設定';
+}
+function setupRoiSelector(){
+  const cv=ui.roiCanvas;if(!cv)return;
+  let start=null,current=null;
+  const resize=()=>{const r=cv.getBoundingClientRect();cv.width=Math.max(1,Math.round(r.width*devicePixelRatio));cv.height=Math.max(1,Math.round(r.height*devicePixelRatio));drawRoi();};
+  addEventListener('resize',resize);setTimeout(resize,50);
+  ui.roiSelect?.addEventListener('click',()=>{observation.roiSelecting=true;cv.classList.add('selecting');ui.ocrStatus.textContent='ドラッグしてキー表示範囲を指定';});
+  cv.addEventListener('pointerdown',e=>{if(!observation.roiSelecting)return;const r=cv.getBoundingClientRect();start={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height};current=start;});
+  cv.addEventListener('pointermove',e=>{if(!start)return;const r=cv.getBoundingClientRect();current={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height};observation.roi={x:Math.min(start.x,current.x),y:Math.min(start.y,current.y),w:Math.abs(current.x-start.x),h:Math.abs(current.y-start.y)};drawRoi();});
+  cv.addEventListener('pointerup',()=>{if(!start)return;start=null;observation.roiSelecting=false;cv.classList.remove('selecting');if(observation.roi&&observation.roi.w>.03&&observation.roi.h>.03){ui.ocrStatus.textContent='範囲設定済み';ui.ocrToggle.disabled=false;}});
+  ui.ocrToggle?.addEventListener('click',toggleOcr);
+}
+function drawRoi(){
+  const cv=ui.roiCanvas;if(!cv)return;const ctx=cv.getContext('2d');ctx.clearRect(0,0,cv.width,cv.height);
+  if(!observation.roi)return;const r=observation.roi;ctx.strokeStyle='#ffd36a';ctx.lineWidth=3*devicePixelRatio;ctx.setLineDash([8*devicePixelRatio,5*devicePixelRatio]);ctx.strokeRect(r.x*cv.width,r.y*cv.height,r.w*cv.width,r.h*cv.height);
+  ctx.fillStyle='rgba(255,211,106,.08)';ctx.fillRect(r.x*cv.width,r.y*cv.height,r.w*cv.width,r.h*cv.height);
+}
+async function toggleOcr(){
+  if(!observation.roi||!observation.active)return;
+  observation.ocrActive=!observation.ocrActive;
+  ui.ocrToggle.textContent=observation.ocrActive?'キーOCR停止':'キーOCR開始';
+  ui.ocrStatus.textContent=observation.ocrActive?'OCR準備中':'範囲設定済み';
+  if(observation.ocrActive&&!observation.ocrWorker&&window.Tesseract){
+    try{observation.ocrWorker=await Tesseract.createWorker('eng');ui.ocrStatus.textContent='OCR認識中';}
+    catch{observation.ocrActive=false;ui.ocrStatus.textContent='OCR読込失敗';}
+  }
+}
+function normalizeKeyTokens(text){
+  const t=(' '+text.toUpperCase().replace(/[^A-Z0-9+\s]/g,' ')+' ').replace(/\s+/g,' ');
+  const found=new Set();
+  const aliases=[['SHIFT',['SHIFT','SHFT']],['SPACE',['SPACE','SPC']],['LMB',['LMB','M1','LBUTTON','LEFT']],['RMB',['RMB','M2','RBUTTON','RIGHT']]];
+  for(const [key,arr] of aliases)if(arr.some(x=>t.includes(' '+x+' ')||t.includes(x)))found.add(key);
+  for(const k of ['W','A','S','D','E','F','C','X','Z','Q','R','1','2','3','4','5','6','7','8','9'])if(new RegExp('(?:^|\\s)'+k+'(?:\\s|$)').test(t))found.add(k);
+  return found;
+}
+function inferOcrInput(tokens){
+  const has=x=>tokens.has(x);
+  let id=null;
+  if(has('SHIFT')&&has('SPACE'))id='lava';
+  else if(has('E'))id='grab';
+  else if(has('S')&&has('F'))id='predatory';
+  else if(has('S')&&has('RMB'))id='beastly';
+  else if((has('A')||has('D'))&&has('RMB'))id='shake';
+  else if(has('S')&&has('LMB'))id='frenzy';
+  else if(has('LMB')&&has('RMB'))id='thunder';
+  else if(has('SHIFT')&&has('X'))id=state.enh56;
+  else if(has('SHIFT')&&has('Z'))id=state.enh57;
+  else if(has('3'))id=state.enh58;
+  else if(has('C'))id='rage';
+  if(id){
+    const sig=[...tokens].sort().join('+'),now=performance.now();
+    if(observation.lastOcrSig!==sig||now-(observation.lastOcrSkillAt||0)>350){observation.lastOcrSig=sig;observation.lastOcrSkillAt=now;learnSkill(id,'画面共有OCR');flashInput(id,true,'画面共有');}
+  }
+}
+async function runKeyOcr(){
+  if(!observation.ocrActive||observation.ocrBusy||!observation.ocrWorker||!observation.roi||ui.observeVideo.readyState<2)return;
+  observation.ocrBusy=true;
+  try{
+    const v=ui.observeVideo,r=observation.roi;
+    const crop=document.createElement('canvas');const vw=v.videoWidth||1280,vh=v.videoHeight||720;
+    crop.width=Math.max(80,Math.round(vw*r.w));crop.height=Math.max(45,Math.round(vh*r.h));
+    crop.getContext('2d').drawImage(v,Math.round(vw*r.x),Math.round(vh*r.y),Math.round(vw*r.w),Math.round(vh*r.h),0,0,crop.width,crop.height);
+    const result=await observation.ocrWorker.recognize(crop);const text=result?.data?.text||'';observation.lastOcrText=text;
+    const tokens=normalizeKeyTokens(text);observation.lastDetected=tokens;ui.ocrStatus.innerHTML=tokens.size?('認識：'+[...tokens].join(' + ')):'認識待ち';inferOcrInput(tokens);
+  }catch{ui.ocrStatus.textContent='OCR再試行中';}
+  observation.ocrBusy=false;
 }
 function sampleObservation(ts){
   if(!observation.active)return;
@@ -471,6 +565,7 @@ function sampleObservation(ts){
     }
     observation.lastFrame=gray;
   }
+  if(observation.ocrActive&&ts-(observation.lastOcrAt||0)>450){observation.lastOcrAt=ts;runKeyOcr();}
   requestAnimationFrame(sampleObservation);
 }
 function startComboRecording(){
@@ -488,40 +583,6 @@ async function stopComboRecording(){
   }
   await saveTrainingSample({name,steps,motionTrace:observation.motionTrace||[],motionSegments:observation.motionSegments,createdAt:new Date().toISOString()},blob);
   if(ui.recordedInputs)ui.recordedInputs.textContent=steps.length?'登録済み：'+steps.map(x=>SKILL_NAME[x]||x).join(' → '):'入力がありません';
-}
-let bridge=null,bridgeKeys={},bridgeMouse={0:false,2:false},bridgeLast={};
-function bridgeSkill(id){
-  const now=performance.now();if(bridgeLast[id]&&now-bridgeLast[id]<180)return;bridgeLast[id]=now;learnSkill(id,'外部ゲーム');flashInput(id,true,'外部入力');
-}
-function inferBridge(){
-  if(bridgeKeys.ShiftLeft||bridgeKeys.ShiftRight){if(bridgeKeys.Space)bridgeSkill('lava');if(bridgeKeys.KeyX)bridgeSkill(state.enh56);if(bridgeKeys.KeyZ)bridgeSkill(state.enh57);}
-  if(bridgeKeys.KeyE)bridgeSkill('grab');if(bridgeKeys.KeyS&&bridgeKeys.KeyF)bridgeSkill('predatory');if(bridgeKeys.KeyC)bridgeSkill('rage');if(bridgeKeys.Digit3)bridgeSkill(state.enh58);
-  if(bridgeMouse[2]&&(bridgeKeys.KeyA||bridgeKeys.KeyD))bridgeSkill('shake');else if(bridgeMouse[2]&&bridgeKeys.KeyS)bridgeSkill('beastly');
-  if(bridgeMouse[0]&&bridgeKeys.KeyS)bridgeSkill('frenzy');if(bridgeMouse[0]&&bridgeMouse[2])bridgeSkill('thunder');
-}
-function ensureBridgeCode(){
-  if(!ui.bridgeCode)return '';
-  if(!ui.bridgeCode.value)ui.bridgeCode.value=Math.random().toString(36).slice(2,8).toUpperCase();
-  return ui.bridgeCode.value;
-}
-function connectInputBridge(){
-  if(bridge&&bridge.readyState<=1)return;
-  const room=ensureBridgeCode();if(!room)return;
-  try{
-    const proto=location.protocol==='https:'?'wss:':'ws:';
-    bridge=new WebSocket(proto+'//'+location.host+'/bridge?room='+encodeURIComponent(room)+'&role=web');
-    bridge.onopen=()=>{ui.bridgeStatus.textContent='入力ブリッジ待機中';};
-    bridge.onclose=()=>ui.bridgeStatus.textContent='未接続';
-    bridge.onerror=()=>ui.bridgeStatus.textContent='接続エラー';
-    bridge.onmessage=e=>{try{
-      const m=JSON.parse(e.data);
-      if(m.type==='hello'&&m.source==='companion'){ui.bridgeStatus.textContent='Windows入力ブリッジ接続済み';return;}
-      if(m.type==='peer'&&m.role==='companion'&&m.event==='join'){ui.bridgeStatus.textContent='Windows入力ブリッジ接続済み';return;}
-      if(m.type==='peer'&&m.role==='companion'&&m.event==='leave'){ui.bridgeStatus.textContent='入力ブリッジ待機中';return;}
-      if(m.type==='key'){bridgeKeys[m.code]=!!m.down;inferBridge();}
-      if(m.type==='mouse'){bridgeMouse[m.button]=!!m.down;inferBridge();}
-    }catch{}};
-  }catch{ui.bridgeStatus.textContent='未接続';}
 }
 function impact(pos,color=0xffb460,size=1){
   const ring=new THREE.Mesh(new THREE.RingGeometry(.45,.62,40),new THREE.MeshBasicMaterial({color,side:THREE.DoubleSide,transparent:true,opacity:.95}));
@@ -547,8 +608,8 @@ function damage(attacker,target,amount,opts={}){
   const ap=attacker.stats?.AP||300,dr=target.stats?.DR||350;
   const scaled=amount*clamp(ap/300,.55,2.6)*(1-clamp(dr/2200,0,.48));
   target.hp-=scaled;if(attacker===player)metrics.hits++;
-  if(opts.cc&&target.sa<=0&&!target.fg){setStatus(target,opts.ccType||'STIFFNESS',opts.cc);if(attacker===player)metrics.cc++;}
-  if(opts.grab){setStatus(target,'GRABBED',opts.cc||1.0);if(attacker===player)metrics.grabs++;}
+  if(opts.cc&&target.sa<=0&&!target.fg){const applied=applyCrowdControl(target,opts.ccType||'STIFFNESS',opts.cc);if(applied&&attacker===player)metrics.cc++;}
+  if(opts.grab){const applied=applyCrowdControl(target,'GRABBED',opts.cc||1.0);if(applied&&attacker===player)metrics.grabs++;}
   if(opts.heal&&attacker){attacker.hp=Math.min(attacker.maxHp,attacker.hp+opts.heal);}
   if(opts.targetEffect)applyEffect(target,opts.targetEffect.id,opts.targetEffect.label,opts.targetEffect.duration,opts.targetEffect.mods,'bad');
   if(opts.selfEffect&&attacker)applyEffect(attacker,opts.selfEffect.id,opts.selfEffect.label,opts.selfEffect.duration,opts.selfEffect.mods,'good');
@@ -576,7 +637,7 @@ function kill(target,attacker){
 }
 
 function respawnActor(a){
-  a.hp=a.maxHp;a.alive=true;a.group.visible=true;a.cc=0;a.invuln=.45;a.sa=0;a.fg=false;a.grabbedBy=null;
+  a.hp=a.maxHp;a.alive=true;a.group.visible=true;a.cc=0;a.invuln=.45;a.sa=0;a.fg=false;a.grabbedBy=null;a.ccCount=0;a.ccResetTimer=0;a.ccImmuneTimer=0;a.ccImmuneAfterGrab=false;a.lastCCType=null;a.status='NORMAL';a.statusTimer=0;
   if(a===player){a.stamina=a.maxStamina;a.group.position.set(0,0,-8);a.skill=null;}
   else a.group.position.set((Math.random()-.5)*8,0,5+Math.random()*5);
 }
@@ -843,7 +904,7 @@ function aiUpdate(a,dt){
 
 function timers(a,dt){
   a.cc=Math.max(0,a.cc-dt);a.invuln=Math.max(0,a.invuln-dt);a.sa=Math.max(0,a.sa-dt);a.attackCd=Math.max(0,a.attackCd-dt);a.dodgeCd=Math.max(0,a.dodgeCd-dt);
-  if(a.respawn>0){a.respawn-=dt;if(a.respawn<=0)respawnActor(a);}buffTick(a,dt);if(a.statusTimer>0){a.statusTimer-=dt;if(a.statusTimer<=0)a.status='NORMAL';}if(!a.isPlayer){a.rig.visual.rotation.z=(a.status==='DOWN'||a.status==='BOUND')?-1.15:a.status==='FLOAT'?.25:0;}
+  if(a.respawn>0){a.respawn-=dt;if(a.respawn<=0)respawnActor(a);}buffTick(a,dt);if(a.ccResetTimer>0){a.ccResetTimer-=dt;if(a.ccResetTimer<=0&&a.ccImmuneTimer<=0){a.ccCount=0;a.lastCCType=null;}}if(a.ccImmuneTimer>0){a.ccImmuneTimer-=dt;if(a.ccImmuneTimer<=0){a.ccImmuneTimer=0;a.ccCount=0;a.ccResetTimer=0;a.lastCCType=null;}}if(a.statusTimer>0){a.statusTimer-=dt;if(a.statusTimer<=0){if(a.status==='GRABBED'&&a.ccImmuneAfterGrab){a.ccImmuneAfterGrab=false;a.ccImmuneTimer=5;}a.status='NORMAL';}}if(!a.isPlayer){a.rig.visual.rotation.z=(a.status==='DOWN'||a.status==='BOUND')?-1.15:a.status==='FLOAT'?.25:0;}
   if(a.fg&&a.attackCd<=0)a.fg=false;
   if(a.isPlayer){
     a.stamina=Math.min(a.maxStamina,a.stamina+72*dt);a.rage=Math.max(0,a.rage-dt);a.lavaChain=Math.max(0,a.lavaChain-dt);a.predatoryFollow=Math.max(0,a.predatoryFollow-dt);
@@ -885,7 +946,7 @@ function uiUpdate(){
   const st=clamp(player.stamina/player.maxStamina,0,1);if(ui.staminaFill)ui.staminaFill.style.width=(st*100)+'%';if(ui.staminaText)ui.staminaText.textContent='持久力 '+Math.ceil(player.stamina)+' / '+player.maxStamina;
   if(ui.rageText)ui.rageText.textContent=player.rage>0?'野獣状態：残り '+player.rage.toFixed(1)+'秒':'野獣状態：OFF';
   ui.protection.textContent=player.cc>0?'CC中':player.invuln>0?'無敵':player.sa>0?'スーパーアーマー':player.fg?'前方ガード':'保護なし';
-  ui.metrics.textContent='命中 '+metrics.hits+'/'+metrics.attempts+' ・ CC '+metrics.cc+' ・ キャッチ '+metrics.grabs+' ・ 死亡 '+metrics.deaths;if(ui.statLine)ui.statLine.textContent='攻撃力 '+Math.round(player.stats.AP)+' ・ 防御力 '+Math.round(player.stats.DR)+' ・ 攻撃速度 '+Math.round(player.stats.AS)+'% ・ 移動速度 '+Math.round(player.stats.MS)+'% ・ クリ率 +'+Math.round(player.stats.CRIT)+'%';renderBuffs();
+  ui.metrics.textContent='命中 '+metrics.hits+'/'+metrics.attempts+' ・ CC成功 '+metrics.cc+' ・ キャッチ '+metrics.grabs+' ・ 死亡 '+metrics.deaths;const tgt=nearestEnemy(player);if(ui.targetCcLine)ui.targetCcLine.textContent=tgt?('対象CCカウント：'+tgt.ccCount.toFixed(1)+' / 2.0'+(tgt.ccImmuneTimer>0?' ・ CC免疫 '+tgt.ccImmuneTimer.toFixed(1)+'秒':'')):'対象CCカウント：—';if(ui.statLine)ui.statLine.textContent='攻撃力 '+Math.round(player.stats.AP)+' ・ 防御力 '+Math.round(player.stats.DR)+' ・ 攻撃速度 '+Math.round(player.stats.AS)+'% ・ 移動速度 '+Math.round(player.stats.MS)+'% ・ クリ率 +'+Math.round(player.stats.CRIT)+'%';renderBuffs();
   for(const n of Object.keys(player.cds)){const el=document.getElementById('cd-'+n);if(!el)continue;const v=player.cds[n];el.textContent=v>0?v.toFixed(1)+'秒':'使用可';el.parentElement.classList.toggle('cooldown',v>0);el.parentElement.classList.toggle('rage',n==='rage'&&player.rage>0);}
 }
 
@@ -932,4 +993,4 @@ ui.start.addEventListener('click',()=>{spawnScenario();ui.menu.classList.remove(
 makeArena('arena');
 player=makeActor('blue','伝承GA',new THREE.Vector3(0,0,-8),true);attachRealisticModel(player);
 bots=[makeActor('red','Enemy 1',new THREE.Vector3(0,0,5))];
-camera.position.set(0,5,-13);camera.lookAt(0,1,0);ensureBridgeCode();loadCustomCombos();uiUpdate();loop();
+camera.position.set(0,5,-13);camera.lookAt(0,1,0);loadCustomCombos();setupRoiSelector();uiUpdate();loop();
