@@ -408,7 +408,7 @@ function skillReady(n){return player&&player.cds[n]<=0;}
 function spendStamina(v){if(player.stamina<v){ui.event.textContent='持久力が足りません';flashInput('持久力',false);return false;}player.stamina-=v;return true;}
 function setSkill(name,duration,extra={}){
   player.skill=Object.assign({name,t:0,duration,events:{}},extra);player.lastSkill=name;
-  if(ui.currentSkill){const n={Lava Piercer:'溶岩貫通',Shake Off:'振り払い',Smack Down:'チョップ＆スロー','Predatory Hunt':'プレデターハンティング','Beastly Wind Slash':'残酷な風斬','Frenzied Destroyer':'バーサークデストロイヤー','Raging Thunder':'ブラストライトニング','Unstoppable Beast':'止められない野獣','Falling Boulder':'フォーリングボルダー','Blast Bash':'ブラストバッシュ','Blast Rage':'ブラストレイジ','Bestial Destroyer':'ベスティアルデストロイヤー','Bestial Rage':'ベスティアルレイス','Berserker Storm':'バーサーカーストーム','Berserker Lord':'バーサーカーロード','Axe Strike':'通常斧攻撃'};ui.currentSkill.textContent=n[name]||name;}
+  if(ui.currentSkill){const n={'Lava Piercer':'溶岩貫通','Shake Off':'振り払い','Smack Down':'チョップ＆スロー','Predatory Hunt':'プレデターハンティング','Beastly Wind Slash':'残酷な風斬','Frenzied Destroyer':'バーサークデストロイヤー','Raging Thunder':'ブラストライトニング','Unstoppable Beast':'止められない野獣','Falling Boulder':'フォーリングボルダー','Blast Bash':'ブラストバッシュ','Blast Rage':'ブラストレイジ','Bestial Destroyer':'ベスティアルデストロイヤー','Bestial Rage':'ベスティアルレイス','Berserker Storm':'バーサーカーストーム','Berserker Lord':'バーサーカーロード','Axe Strike':'通常斧攻撃'};ui.currentSkill.textContent=n[name]||name;}
 }
 function setCd(n,v){player.cds[n]=v;}
 
@@ -470,7 +470,7 @@ function useEnh56(){
     setSkill('Blast Bash',.72,{hit:false,start:player.group.position.clone(),dir:forwardVec()});recordCombo('blastBash',true);ui.event.textContent='ブラストバッシュ';
   }else{
     player.cds.enh56=22;player.sa=1.35;applyEffect(player,'blastRageDR','全ダメージ減少 +20',10,{DR:20});
-    setSkill('Blast Rage',1.45,{nextHit:.2,hits:0});recordCombo('blastRage',true);ui.event.textContent='ブラストレイジ — SA';
+    setSkill('Blast Rage',1.45,{nextHit:.2,hits:0});recordCombo('blastRage',true);ui.event.textContent='ブラストレイジ — スーパーアーマー';
   }
 }
 function useEnh57(){
@@ -480,7 +480,7 @@ function useEnh57(){
     setSkill('Bestial Destroyer',.88,{hit:false});recordCombo('bestialDestroyer',true);ui.event.textContent='ベスティアルデストロイヤー';
   }else{
     player.cds.enh57=15;player.sa=1.35;
-    setSkill('Bestial Rage',1.3,{hit1:false,hit2:false});recordCombo('bestialRage',true);ui.event.textContent='ベスティアルレイス — SA';
+    setSkill('Bestial Rage',1.3,{hit1:false,hit2:false});recordCombo('bestialRage',true);ui.event.textContent='ベスティアルレイス — スーパーアーマー';
   }
 }
 function useBerserkerStorm(){
