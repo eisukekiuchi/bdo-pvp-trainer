@@ -39,6 +39,10 @@ ui.modes.forEach(b=>b.addEventListener('click',()=>{ui.modes.forEach(x=>x.classL
 ui.enemyCount.addEventListener('input',()=>ui.enemyVal.textContent=ui.enemyCount.value);
 ui.allyCount.addEventListener('input',()=>ui.allyVal.textContent=ui.allyCount.value);
 ui.settings.addEventListener('click',()=>{ui.menu.classList.add('show');document.exitPointerLock?.();});
+ui.observeBtn?.addEventListener('click',()=>{ui.observePanel.classList.add('show');document.exitPointerLock?.();connectInputBridge();});
+ui.observeClose?.addEventListener('click',()=>ui.observePanel.classList.remove('show'));
+ui.captureStart?.addEventListener('click',startObservation);ui.captureStop?.addEventListener('click',stopObservation);
+ui.comboRecordStart?.addEventListener('click',startComboRecording);ui.comboRecordStop?.addEventListener('click',stopComboRecording);
 
 const key=Object.create(null);
 let mouseLeft=false,mouseRight=false,yaw=0,pitch=-0.18,started=false,last=performance.now();
@@ -280,6 +284,7 @@ function readEnhancements(){
   state.enh58=document.querySelector('input[name="enh58"]:checked')?.value||'berserkerStorm';
 }
 function flashInput(id,success=true,extra=''){
+  learnSkill(id,'シミュレーター');
   if(!ui.inputFlash)return;
   const name=SKILL_NAME[id]||id;
   ui.inputFlash.textContent=(success?'✓ ':'✕ ')+name+(extra?' '+extra:'');
@@ -291,6 +296,7 @@ function flashInput(id,success=true,extra=''){
 }
 function buildCombo(){
   combo.mode=ui.comboSelect?.value||'free';combo.index=0;combo.result='WAIT';combo.lastAt=0;combo.history=[];combo.predatoryCount=0;
+  if(combo.mode.startsWith('custom:')){const item=getSavedCombos()[Number(combo.mode.split(':')[1])];combo.name=item?.name||'登録コンボ';combo.steps=item?.steps||[];renderCombo();return;}
   if(combo.mode==='catch'){combo.name='接近 → 横移動 → 再接近 → キャッチ → 追撃';combo.steps=['lava','shake','lava','grab','frenzy'];}
   else if(combo.mode==='predator'){combo.name='プレデターハンティング連続 → フォーリングボルダー';combo.steps=['predatoryLoop','falling'];}
   else if(combo.mode==='enhance'){combo.name='スキル練成3段ルート';combo.steps=[state.enh56,state.enh57,state.enh58];}
@@ -406,6 +412,103 @@ function renderBuffs(){
 }
 function currentEnhancementName(level){return SKILL_NAME[level===56?state.enh56:level===57?state.enh57:state.enh58];}
 
+function learnSkill(id,source='Web'){
+  if(!comboRecording)return;
+  const now=performance.now();
+  const last=recordedCombo[recordedCombo.length-1];
+  if(last&&last.id===id&&now-last.t<90)return;
+  recordedCombo.push({id,t:now,source});observation.inputCount++;
+  if(ui.recordedInputs)ui.recordedInputs.innerHTML=recordedCombo.map((x,i)=>'<span>'+(i+1)+'. '+(SKILL_NAME[x.id]||x.id)+'</span>').join(' → ');
+  updateLearnStats();
+}
+function updateLearnStats(){
+  if(ui.learnStats)ui.learnStats.textContent='動作区間 '+observation.motionSegments+' / 入力 '+observation.inputCount;
+}
+function getSavedCombos(){try{return JSON.parse(localStorage.getItem('pvp-custom-combos')||'[]')}catch{return[]}}
+function saveCustomCombo(name,steps){
+  const list=getSavedCombos();list.push({name,steps,createdAt:new Date().toISOString()});localStorage.setItem('pvp-custom-combos',JSON.stringify(list));loadCustomCombos();
+}
+function loadCustomCombos(){
+  if(!ui.comboSelect)return;
+  [...ui.comboSelect.querySelectorAll('option[data-custom]')].forEach(x=>x.remove());
+  getSavedCombos().forEach((x,i)=>{const o=document.createElement('option');o.value='custom:'+i;o.dataset.custom='1';o.textContent='登録コンボ：'+x.name;ui.comboSelect.appendChild(o);});
+}
+async function openTrainingDB(){
+  return new Promise((resolve,reject)=>{const req=indexedDB.open('pvp-trainer-learning',1);req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains('samples'))db.createObjectStore('samples',{keyPath:'id',autoIncrement:true});};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});
+}
+async function saveTrainingSample(meta,videoBlob){
+  try{const db=await openTrainingDB();const tx=db.transaction('samples','readwrite');tx.objectStore('samples').add({...meta,video:videoBlob||null});return new Promise(res=>{tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);});}catch{return false;}
+}
+function setupRecorderForCurrentStream(){
+  if(!observation.stream||!window.MediaRecorder)return null;
+  let options={};if(MediaRecorder.isTypeSupported('video/webm;codecs=vp9'))options={mimeType:'video/webm;codecs=vp9'};else if(MediaRecorder.isTypeSupported('video/webm'))options={mimeType:'video/webm'};
+  const rec=new MediaRecorder(observation.stream,options);const chunks=[];rec.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data)};observation.recordChunks=chunks;return rec;
+}
+async function startObservation(){
+  try{
+    const stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:30,max:60}},audio:false});
+    observation.stream=stream;observation.active=true;observation.lastFrame=null;observation.lastSample=0;observation.motionTrace=[];observation.motionSegments=0;observation.inputCount=0;observation.inMotion=false;
+    ui.observeVideo.srcObject=stream;ui.captureStatus.textContent='観察中';ui.captureStart.disabled=true;ui.captureStop.disabled=false;
+    const cv=document.createElement('canvas');cv.width=160;cv.height=90;observation.canvas=cv;observation.ctx=cv.getContext('2d',{willReadFrequently:true});
+    stream.getVideoTracks()[0].addEventListener('ended',stopObservation);requestAnimationFrame(sampleObservation);connectInputBridge();updateLearnStats();
+  }catch(e){ui.captureStatus.textContent='開始できませんでした';}
+}
+function stopObservation(){
+  if(observation.stream)observation.stream.getTracks().forEach(t=>t.stop());observation.stream=null;observation.active=false;
+  if(ui.observeVideo)ui.observeVideo.srcObject=null;if(ui.captureStatus)ui.captureStatus.textContent='停止中';if(ui.captureStart)ui.captureStart.disabled=false;if(ui.captureStop)ui.captureStop.disabled=true;
+}
+function sampleObservation(ts){
+  if(!observation.active)return;
+  if(ts-observation.lastSample>120&&ui.observeVideo.readyState>=2){
+    observation.lastSample=ts;const ctx=observation.ctx,cv=observation.canvas;ctx.drawImage(ui.observeVideo,0,0,cv.width,cv.height);
+    const data=ctx.getImageData(0,0,cv.width,cv.height).data;const gray=new Uint8Array(cv.width*cv.height);
+    for(let i=0,j=0;i<data.length;i+=4,j++)gray[j]=(data[i]*.299+data[i+1]*.587+data[i+2]*.114)|0;
+    if(observation.lastFrame){
+      let sum=0;for(let i=0;i<gray.length;i+=3)sum+=Math.abs(gray[i]-observation.lastFrame[i]);const diff=sum/(gray.length/3);
+      observation.motionTrace.push({t:ts,d:Math.round(diff*10)/10});if(observation.motionTrace.length>1200)observation.motionTrace.shift();
+      const moving=diff>8.5;if(moving&&!observation.inMotion)observation.motionSegments++;observation.inMotion=moving;
+      ui.motionStatus.textContent=moving?'大きな動作を検出':'静止 / 小さな動き';updateLearnStats();
+    }
+    observation.lastFrame=gray;
+  }
+  requestAnimationFrame(sampleObservation);
+}
+function startComboRecording(){
+  comboRecording=true;recordedCombo=[];observation.inputCount=0;if(ui.recordedInputs)ui.recordedInputs.textContent='入力待ち…';
+  ui.comboRecordStart.disabled=true;ui.comboRecordStop.disabled=false;
+  observation.mediaRecorder=setupRecorderForCurrentStream();if(observation.mediaRecorder)observation.mediaRecorder.start(250);
+}
+async function stopComboRecording(){
+  if(!comboRecording)return;comboRecording=false;ui.comboRecordStart.disabled=false;ui.comboRecordStop.disabled=true;
+  const name=(ui.comboRecordName?.value||'新しいコンボ').trim();const steps=recordedCombo.map(x=>x.id);
+  if(steps.length)saveCustomCombo(name,steps);
+  let blob=null;
+  if(observation.mediaRecorder&&observation.mediaRecorder.state!=='inactive'){
+    blob=await new Promise(resolve=>{observation.mediaRecorder.onstop=()=>resolve(new Blob(observation.recordChunks||[],{type:observation.mediaRecorder.mimeType||'video/webm'}));observation.mediaRecorder.stop();});
+  }
+  await saveTrainingSample({name,steps,motionTrace:observation.motionTrace||[],motionSegments:observation.motionSegments,createdAt:new Date().toISOString()},blob);
+  if(ui.recordedInputs)ui.recordedInputs.textContent=steps.length?'登録済み：'+steps.map(x=>SKILL_NAME[x]||x).join(' → '):'入力がありません';
+}
+let bridge=null,bridgeKeys={},bridgeMouse={0:false,2:false},bridgeLast={};
+function bridgeSkill(id){
+  const now=performance.now();if(bridgeLast[id]&&now-bridgeLast[id]<180)return;bridgeLast[id]=now;learnSkill(id,'外部ゲーム');flashInput(id,true,'外部入力');
+}
+function inferBridge(){
+  if(bridgeKeys.ShiftLeft||bridgeKeys.ShiftRight){if(bridgeKeys.Space)bridgeSkill('lava');if(bridgeKeys.KeyX)bridgeSkill(state.enh56);if(bridgeKeys.KeyZ)bridgeSkill(state.enh57);}
+  if(bridgeKeys.KeyE)bridgeSkill('grab');if(bridgeKeys.KeyS&&bridgeKeys.KeyF)bridgeSkill('predatory');if(bridgeKeys.KeyC)bridgeSkill('rage');if(bridgeKeys.Digit3)bridgeSkill(state.enh58);
+  if(bridgeMouse[2]&&(bridgeKeys.KeyA||bridgeKeys.KeyD))bridgeSkill('shake');else if(bridgeMouse[2]&&bridgeKeys.KeyS)bridgeSkill('beastly');
+  if(bridgeMouse[0]&&bridgeKeys.KeyS)bridgeSkill('frenzy');if(bridgeMouse[0]&&bridgeMouse[2])bridgeSkill('thunder');
+}
+function connectInputBridge(){
+  if(bridge&&bridge.readyState<=1)return;
+  try{
+    bridge=new WebSocket('ws://127.0.0.1:8765');
+    bridge.onopen=()=>ui.bridgeStatus.textContent='Windows入力ブリッジ接続済み';
+    bridge.onclose=()=>ui.bridgeStatus.textContent='Web内入力のみ';
+    bridge.onerror=()=>ui.bridgeStatus.textContent='Web内入力のみ';
+    bridge.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type==='key'){bridgeKeys[m.code]=!!m.down;inferBridge();}if(m.type==='mouse'){bridgeMouse[m.button]=!!m.down;inferBridge();}}catch{}};
+  }catch{ui.bridgeStatus.textContent='Web内入力のみ';}
+}
 function impact(pos,color=0xffb460,size=1){
   const ring=new THREE.Mesh(new THREE.RingGeometry(.45,.62,40),new THREE.MeshBasicMaterial({color,side:THREE.DoubleSide,transparent:true,opacity:.95}));
   ring.rotation.x=-Math.PI/2;ring.position.copy(pos);ring.position.y=.04;ring.userData={life:.42,max:.42,expand:4.4*size};fx.add(ring);
@@ -815,4 +918,4 @@ ui.start.addEventListener('click',()=>{spawnScenario();ui.menu.classList.remove(
 makeArena('arena');
 player=makeActor('blue','伝承GA',new THREE.Vector3(0,0,-8),true);attachRealisticModel(player);
 bots=[makeActor('red','Enemy 1',new THREE.Vector3(0,0,5))];
-camera.position.set(0,5,-13);camera.lookAt(0,1,0);uiUpdate();loop();
+camera.position.set(0,5,-13);camera.lookAt(0,1,0);loadCustomCombos();uiUpdate();loop();
