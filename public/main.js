@@ -760,7 +760,7 @@ function updateSkill(dt){
     if(!s.grabChecked&&p>=.18){
       s.grabChecked=true;const t=nearestEnemy(player);
       if(t&&player.group.position.distanceTo(t.group.position)<=2.35&&t.invuln<=0){
-        s.victim=t;t.grabbedBy=player;t.cc=2.4;metrics.grabs++;metrics.attempts++;metrics.hits++;ui.event.textContent='チョップ＆スロー — キャッチ成功';
+        s.victim=t;t.grabbedBy=player;applyCrowdControl(t,'GRABBED',.95);t.cc=Math.max(t.cc,2.4);metrics.grabs++;metrics.attempts++;metrics.hits++;ui.event.textContent='チョップ＆スロー — キャッチ成功';
         cameraShake=.18;
       }else{metrics.attempts++;recordCombo('grab',false);ui.event.textContent='チョップ＆スロー — 空振り';}
     }
